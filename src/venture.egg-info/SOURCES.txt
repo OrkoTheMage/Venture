@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+setup.cfg
+src/venture.egg-info/PKG-INFO
+src/venture.egg-info/SOURCES.txt
+src/venture.egg-info/dependency_links.txt
+src/venture.egg-info/entry_points.txt
+src/venture.egg-info/top_level.txt
