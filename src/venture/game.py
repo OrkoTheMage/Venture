@@ -1,77 +1,70 @@
-import shutil
-import time
 import random
+import shutil
 
 from .window import Window
-from .renderer import get_ascii_lines, scale_ascii
-from .state import load_state, save_state, clear_state
+from .renderer import get_ascii_lines
+from .state import load_state, save_state
+from . import combat, roster as roster_mod, quest as quest_mod
 
 
 class Game:
 
-    def _quest_info(self):
-        s = load_state()
-        start = s.get("quest_start")
-        if start is None:
-            return {"running": False}
-        try:
-            start = float(start)
-        except Exception:
-            return {"running": False}
-        now = time.time()
-        elapsed = now - start
-        remaining = max(0, 60 - elapsed)
-        completed = elapsed >= 60
-        return {
-            "running": not completed,
-            "elapsed": max(0, elapsed),
-            "remaining": remaining,
-            "completed": completed,
-        }
-
     def play(self) -> None:
         term = shutil.get_terminal_size(fallback=(80, 24))
         cols, rows = term.columns, term.lines
-        width = max(20, min(cols - 4, 160))
-        height = max(8, min(rows - 4, 60))
-        win = Window(width=width, height=height)
+        win = Window(
+            width=max(20, min(cols - 4, 160)),
+            height=max(8, min(rows - 4, 60)),
+        )
 
-        # Load saved state (player name may be set later after initial render)
+        # Passive regen handled in main loop
         state = load_state()
         player_name = state.get("player_name")
         estate_name = state.get("estate_name")
         roster_seen = state.get("roster_seen")
 
-        lines = get_ascii_lines(cols, rows)
-        # do not add top padding; print ascii art starting at the top
+        ascii_lines = get_ascii_lines(cols, rows)
         inner_h = win.height
 
-        # add quest status lines at bottom of display area (with progress bar)
-        def _build_status_lines():
-            quest = self._quest_info()
+        # ── helpers ──────────────────────────────────────────────────────── #
+
+        def _build_status_lines() -> list[str]:
+            nonlocal state, roster_seen
+            qi = quest_mod.quest_info()
             status: list[str] = []
-            if quest.get("running"):
-                rem = int(quest.get("remaining", 60))
-                elapsed = float(quest.get("elapsed", 0.0))
-                pct = int(min(100, (elapsed / 60) * 100))
-                bar_width = max(10, min(40, win.width - 20))
-                filled = int(bar_width * pct / 100)
-                bar = "[" + ("#" * filled) + ("-" * (bar_width - filled)) + "]"
-                status.append("")
-                status.append(f"Quest: in progress {bar} {pct}% ({rem}s)")
-                status.append("Leave and come back to see progress persistently.")
-            elif quest.get("completed"):
-                status.append("")
-                status.append("Quest complete! Come claim your reward.")
-                clear_state()
+            if qi.get("running"):
+                rem = int(qi["remaining"])
+                pct = int(min(100, qi["elapsed"] / qi["duration"] * 100))
+                bw = max(10, min(40, win.width - 20))
+                bar = "[" + "#" * int(bw * pct / 100) + "-" * (bw - int(bw * pct / 100)) + "]"
+                status += ["", f"Quest: in progress {bar} {pct}% ({rem}s)",
+                           "Leave and come back to see progress persistently."]
+            elif qi.get("completed"):
+                summary = quest_mod.apply_quest_damage()
+                state = load_state()
+                roster_seen = state.get("roster_seen")
+                lines = ["", "Quest Complete!"]
+                if summary["damage_taken"]:
+                    lines.append("Results:")
+                    for name, hp_pct, exp in summary["damage_taken"]:
+                        if name in summary["fallen"]:
+                            lines.append(f"   {name}: {hp_pct}% HP lost and has fallen")
+                        else:
+                            lines.append(f"   {name}: Lost {hp_pct}% HP and gained {exp} EXP")
+                if summary["rewards"]:
+                    lines.append("")
+                    lines.append("Rewards:")
+                    for r in summary["rewards"]:
+                        lines.append(f"   {r}")
+                status += lines
             return status
 
-        def _make_greeting_and_event(pname: str | None, ename: str | None) -> tuple[str | None, str | None]:
+        def _make_greeting(pname: str | None, ename: str | None) -> tuple[str | None, str | None]:
             if not pname:
                 return None, None
             greetings = ["Greetings", "Hello", "Well met", "Hail"]
-            weathers = ["sunny", "rainy", "stormy", "foggy", "windy", "snowy", "overcast"]
-            events = [
+            weathers  = ["sunny", "rainy", "stormy", "foggy", "windy", "snowy", "overcast"]
+            events    = [
                 "A hawk circles overhead.",
                 "A distant horn sounds.",
                 "A sudden breeze chills you.",
@@ -80,133 +73,223 @@ class Game:
                 "The scent of smoke drifts from the east.",
                 "Villagers whisper of a strange light.",
             ]
-            if not ename:
-                greeting = f"Hello, {pname}"
-            else:
-                greeting = f"{random.choice(greetings)}, {pname} it's a {random.choice(weathers)} day in {ename}"
-            return greeting, random.choice(events)
+            import datetime
+            day_seed = int(datetime.date.today().strftime("%Y%m%d"))
+            rng = random.Random(day_seed)
+            greeting = (
+                f"Hello, {pname}" if not ename
+                else f"{rng.choice(greetings)}, {pname} it's a "
+                     f"{rng.choice(weathers)} day in {ename}"
+            )
+            return greeting, rng.choice(events)
 
-        def _show_roster():
-            # Ensure an initial roster exists in state
-            roster = state.get("roster")
-            if not roster:
-                roster = [
-                    {"name": "Hadrik", "class": "Fighter", "lvl": 1},
-                    {"name": "Brynndar", "class": "Rogue", "lvl": 1},
-                ]
-                state["roster"] = roster
-                save_state(state)
+        def _render_home(force_roster_hint: bool = False) -> None:
+            status_lines = _build_status_lines()
+            avail_h = max(0, inner_h - (1 if player_name else 0) - len(status_lines))
+            display = [l[:win.width] for l in ascii_lines][:avail_h]
+            rl: list[str] = display + [""] * 3
+            gre, evt = _make_greeting(player_name, estate_name)
+            if gre:
+                rl.append(gre)
+            if evt:
+                rl.append(evt)
+            if force_roster_hint or (player_name and not roster_seen):
+                rl += ["", "Type 'roster' to view your roster."]
+            rl += status_lines
+            win.render(rl[:inner_h])
 
-            # Load card template and substitute values for two cards
-            from pathlib import Path
+        def _show_roster() -> None:
+            roster_mod.ensure_default_roster(state)
+            lines = roster_mod.build_roster_lines(state)
+            win.render(lines[:win.height])
 
-            tpl_path = Path(__file__).parent / "ascii" / "classCard.txt"
-            try:
-                tpl = tpl_path.read_text()
-            except Exception:
-                # fallback simple listing
-                lines = [f"{h['name']} | {h['class']} | Lvl {h['lvl']}" for h in roster]
-                win.render(lines[: win.height])
-                return
-
-            text = tpl
-            # replace placeholders in order (left then right)
-            # the inner name field in the card template is 15 chars wide
-            text = text.replace("   Hero Name   ", roster[0]["name"].center(15), 1)
-            text = text.replace("   Hero Name   ", roster[1]["name"].center(15), 1)
-            # replace class names (assumes template contains sample classes)
-            # replace first class occurrence with roster[0], second with roster[1]
-            # find generic class words to replace: use the words in template
-            # replace first 'Fighter' occurrence
-            text = text.replace("Fighter", roster[0]["class"], 1)
-            # replace next class occurrence with roster[1]
-            # try common sample 'Rogue' or any remaining known class in template
-            text = text.replace("Rogue", roster[1]["class"], 1)
-            # replace level markers (first then second)
-            text = text.replace("Lvl 1", f"Lvl {roster[0]['lvl']}", 1)
-            text = text.replace("Lvl 1", f"Lvl {roster[1]['lvl']}", 1)
-
-            lines = text.splitlines()
-            win.render(lines[: win.height])
-
-        def _enter_roster_mode():
+        def _enter_roster_mode() -> bool:
+            """Returns True if the player wants to quit the game."""
             nonlocal roster_seen
+            first_visit = not roster_seen
             _show_roster()
-            # mark roster as seen and persist
+            if first_visit:
+                print(
+                    "This is your roster. In your service are Hadrik and Brynndar.\n"
+                    "Return to the main screen to embark on your first quest."
+                )
             state["roster_seen"] = True
             save_state(state)
             roster_seen = True
             while True:
+                combat.apply_regen()
                 try:
-                    rcmd = win.prompt("roster> ").strip()
+                    raw = win.prompt("roster> ").strip()
                 except (EOFError, KeyboardInterrupt):
-                    rcmd = ""
-                if not rcmd:
-                    return False
-                rparts = rcmd.split()
-                rverb = rparts[0].lower()
-                if rverb in ("back", "done"):
-                    return False
-                if rverb in ("quit", "exit"):
+                    raw = ""
+                parts = raw.split()
+                verb  = parts[0].lower() if parts else ""
+                result = roster_mod.handle_roster_command(verb, parts, state)
+                if result == "quit":
                     print("Goodbye!")
                     return True
-                if rverb == "help":
-                    print("Roster commands: rename [old name] [new name], list, back, quit")
-                    continue
-                if rverb == "list":
+                if result == "back":
+                    return False
+                if result == "list":
                     _show_roster()
-                    continue
-                if rverb == "rename":
-                    if len(rparts) < 3:
-                        print("Usage: rename [hero name] [new hero name]")
+
+        def _enter_spell_mode() -> bool:
+            """Returns True if the player wants to quit."""
+            nonlocal state
+
+            def _show_spells():
+                spells = quest_mod.get_wizard_spells(state)
+                lines = ["", "Wizard Spells:"]
+                if not spells:
+                    lines.append("  No wizard spells available (need a Wizard at level 3+).")
+                else:
+                    for i, sp in enumerate(spells, start=1):
+                        status = "(Ready)" if sp["can_cast"] else f"({sp['reason']})"
+                        lines.append(
+                            f"  {i}. {sp['wizard']} — {sp['spell'].capitalize()}: "
+                            f"{sp['desc']} {status}"
+                        )
+                lines += ["", "Type a number to cast, or 'back'."]
+                win.render(lines[:win.height])
+
+            _show_spells()
+            while True:
+                combat.apply_regen()
+                try:
+                    raw = win.prompt("spell> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    raw = ""
+                if not raw or raw.lower() in ("back", "b"):
+                    return False
+                if raw.lower() in ("quit", "exit"):
+                    print("Goodbye!")
+                    return True
+                if raw.isdigit():
+                    spells = quest_mod.get_wizard_spells(state)
+                    idx = int(raw) - 1
+                    if not (0 <= idx < len(spells)):
+                        print(f"Invalid choice. Enter 1-{len(spells)}.")
+                        continue
+                    sp = spells[idx]
+                    if not sp["can_cast"]:
+                        print(sp["reason"])
+                        continue
+                    if sp["spell"] == "inspire":
+                        roster = state.get("roster", [])
+                        print("Choose a hero to receive 300 EXP:")
+                        for j, h in enumerate(roster, start=1):
+                            print(f"  {j}. {h['name']} ({h['class']}, Lvl {h['lvl']}, EXP {h.get('exp', 0)})")
+                        try:
+                            t_raw = win.prompt("target> ").strip()
+                        except (EOFError, KeyboardInterrupt):
+                            t_raw = ""
+                        if not t_raw:
+                            continue
+                        if t_raw.isdigit():
+                            tidx = int(t_raw) - 1
+                            if 0 <= tidx < len(roster):
+                                t_raw = roster[tidx]["name"]
+                            else:
+                                print("Invalid choice.")
+                                continue
+                        ok, msg = quest_mod.cast_wizard_spell(state, sp["wizard"], sp["spell"], t_raw)
                     else:
-                        old_name = rparts[1]
-                        new_name = " ".join(rparts[2:])
-                        roster = state.get("roster") or []
-                        found = False
-                        for h in roster:
-                            if h.get("name", "").lower() == old_name.lower():
-                                h["name"] = new_name
-                                save_state(state)
-                                print(f"Renamed {old_name} -> {new_name}")
-                                found = True
-                                break
-                        if not found:
-                            print(f"Hero '{old_name}' not found in roster.")
-                        _show_roster()
-                    continue
-                print("Unknown roster command. Type 'help'.")
+                        ok, msg = quest_mod.cast_wizard_spell(state, sp["wizard"], sp["spell"])
+                    state = load_state()
+                    print(msg)
+                    _show_spells()
+                else:
+                    print("Type a number or 'back'.")
 
-        # initial render
-        status_lines = _build_status_lines()
-        greet_lines = 1 if player_name else 0
-        reserved = greet_lines + len(status_lines)
-        avail_h = max(0, inner_h - reserved)
-        ascii_display = [l[: win.width] for l in lines][:avail_h]
-        render_lines: list[str] = ascii_display[:]
-        render_lines.extend([""] * 3)
-        gre, evt = _make_greeting_and_event(player_name, estate_name)
-        if gre:
-            render_lines.append(gre)
-        if evt:
-            render_lines.append(evt)
-        # show roster instruction on greeting screen if needed
-        if player_name and not roster_seen:
-            render_lines.append("")
-            render_lines.append("Type 'roster' to view your roster.")
-        render_lines.extend(status_lines)
-        win.render(render_lines[:inner_h])
+        def _select_party(quest_name: str) -> list | None:
+            MAX_PARTY = 4
+            current_roster = state.get("roster", [])
+            selected: list[int] = []
 
-        # show roster instruction on greeting screen; actual enforcement happens in command loop
+            def _draw():
+                lines = quest_mod.build_party_screen(quest_name, current_roster, selected, MAX_PARTY)
+                win.render(lines[:win.height])
 
-        # If no player name yet, present the lore and prompt AFTER ascii render
+            _draw()
+            while True:
+                combat.apply_regen()
+                try:
+                    raw = win.prompt("party> ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    raw = ""
+                if not raw or raw in ("back", "b"):
+                    return None
+                if raw in ("quit", "exit"):
+                    print("Goodbye!")
+                    return None
+                if raw == "go":
+                    if len(selected) != MAX_PARTY:
+                        print(f"You must select exactly {MAX_PARTY} heroes.")
+                        continue
+                    return [current_roster[i] for i in selected]
+                if raw.isdigit():
+                    idx = int(raw) - 1
+                    if 0 <= idx < len(current_roster):
+                        if idx in selected:
+                            selected.remove(idx)
+                        elif len(selected) < MAX_PARTY:
+                            selected.append(idx)
+                        else:
+                            print(f"Already have {MAX_PARTY} selected — deselect one first.")
+                    else:
+                        print(f"Invalid choice. Enter 1-{len(current_roster)}.")
+                else:
+                    print("Type a number to toggle, 'go' to confirm, or 'back'.")
+                _draw()
+
+        def _enter_quest_mode() -> bool:
+            """Returns True if the player wants to quit the game."""
+            quests, card_lines = quest_mod.build_quest_cards(state)
+            win.render(card_lines[:win.height])
+
+            while True:
+                combat.apply_regen()
+                try:
+                    choice = win.prompt("Choose quest or 'back'> ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    choice = ""
+                if not choice or choice in ("back", "b"):
+                    return False
+                if choice in ("quit", "exit"):
+                    print("Goodbye!")
+                    return True
+                if choice.isdigit():
+                    n = int(choice)
+                    if 1 <= n <= len(quests):
+                        chosen = quests[n - 1]
+                        chosen["_index"] = n
+                        current_roster = state.get("roster", [])
+                        if chosen["name"] == "Gather Allies":
+                            party = current_roster[:]
+                        else:
+                            party = _select_party(chosen["name"])
+                            if party is None:
+                                win.render(card_lines[:win.height])
+                                continue
+                        quest_mod.start_quest(state, chosen, party)
+                        print(
+                            f"Quest '{chosen['name']}' started — "
+                            f"will complete in {state['quest_duration']}s "
+                            f"({chosen['length']})."
+                        )
+                        return False
+                print(f"Please choose 1-{len(quests)}, 'back', or 'quit'.")
+
+        # ── initial render ────────────────────────────────────────────────── #
+        _render_home()
+
         if not player_name:
             print(
                 "Welcome, to the world of Venture\n"
                 "You are the heir to a great legacy.\n"
                 "Your once great house has fallen to the horrors from the depths.\n"
-                "Gather great heroes, and cunning allies. Delve the halls of your ancestors and...\n"
-                "Claim your birthright!"
+                "Gather great heroes, and cunning allies. Delve the halls of your "
+                "ancestors and...\nClaim your birthright!"
             )
             try:
                 name = win.prompt("What is your name? ").strip()
@@ -223,38 +306,19 @@ class Game:
                 save_state(state)
                 player_name = name
                 estate_name = state.get("estate_name")
-                roster_seen = state.get("roster_seen")
-                # re-render with greeting now that we have a name
-                status_lines = _build_status_lines()
-                greet_lines = 1
-                reserved = greet_lines + len(status_lines)
-                avail_h = max(0, inner_h - reserved)
-                display_lines = [l[: win.width] for l in lines][:avail_h]
-                render_lines = display_lines[:]
-                render_lines.extend([""] * 3)
-                gre, evt = _make_greeting_and_event(player_name, estate_name)
-                if gre:
-                    render_lines.append(gre)
-                if evt:
-                    render_lines.append(evt)
-                # show roster instruction on greeting screen if needed
-                if player_name and not roster_seen:
-                    render_lines.append("")
-                    render_lines.append("Type 'roster' to view your roster.")
-                render_lines.extend(status_lines)
-                win.render(render_lines[:inner_h])
+                _render_home(force_roster_hint=True)
 
-        # Enter a minimal command loop to start quests or quit
+        # ── main command loop ─────────────────────────────────────────────── #
         while True:
+            combat.apply_regen()
             try:
                 cmd = win.prompt("> ").strip()
             except (EOFError, KeyboardInterrupt):
                 print("Goodbye!")
                 return
+
             if not roster_seen:
-                # enforce that the player types 'roster' before any other command
                 if not cmd:
-                    # empty input: re-render handled below
                     pass
                 else:
                     verb_check = cmd.split()[0].lower()
@@ -264,87 +328,62 @@ class Game:
                     if verb_check != "roster":
                         print("Please type 'roster' to view your roster before proceeding.")
                         continue
-                    # user typed 'roster' — enter roster interactive mode
-                    quit_now = _enter_roster_mode()
-                    if quit_now:
+                    if _enter_roster_mode():
                         return
+                    _render_home()
+                    print('Type "quest" to view available quests.')
                     continue
+
             if not cmd:
-                # re-render to refresh progress
-                status_lines = _build_status_lines()
-                greet_lines = 1 if player_name else 0
-                reserved = greet_lines + len(status_lines)
-                avail_h = max(0, inner_h - reserved)
-                display_lines = [l[: win.width] for l in lines][:avail_h]
-                render_lines = display_lines[:]
-                render_lines.extend([""] * 3)
-                gre, evt = _make_greeting_and_event(player_name, estate_name)
-                if gre:
-                    render_lines.append(gre)
-                if evt:
-                    render_lines.append(evt)
-                # show roster instruction on greeting screen if needed
-                if player_name and not roster_seen:
-                    render_lines.append("")
-                    render_lines.append("Type 'roster' to view your roster.")
-                # require roster acknowledgement after initial name/estate entry
-                if not roster_seen:
-                    try:
-                        resp = win.prompt("Type 'roster' to view your roster: ").strip().lower()
-                    except (EOFError, KeyboardInterrupt):
-                        resp = ""
-                    while resp != "roster":
-                        if resp in ("quit", "exit"):
-                            print("Goodbye!")
-                            return
-                        try:
-                            resp = win.prompt("Please type 'roster' to continue (or 'quit'): ").strip().lower()
-                        except (EOFError, KeyboardInterrupt):
-                            resp = ""
-                    state["roster_seen"] = True
-                    save_state(state)
-                    roster_seen = True
-                render_lines.extend(status_lines)
-                win.render(render_lines[:inner_h])
+                _render_home()
                 continue
+
             parts = cmd.split()
-            verb = parts[0].lower()
+            verb  = parts[0].lower()
+
             if verb == "quest":
-                # start a quest if none running
-                qi = self._quest_info()
-                if qi.get("running"):
-                    rem = int(qi.get("remaining", 60))
-                    print(f"Quest already running — {rem}s remaining.")
+                if quest_mod.quest_info().get("running"):
+                    rem = int(quest_mod.quest_info()["remaining"])
+                    print(f"Already on a quest — {rem}s remaining.")
+                    continue
+                if _enter_quest_mode():
+                    return
+                _render_home()
+
+            elif verb == "roster":
+                was_first = not roster_seen
+                if _enter_roster_mode():
+                    return
+                _render_home()
+                if was_first:
+                    print('Type "quest" to view available quests.')
+
+            elif verb == "spell":
+                if _enter_spell_mode():
+                    return
+                _render_home()
+
+            elif verb == "dev":
+                sub = parts[1].lower() if len(parts) > 1 else ""
+                if sub == "complete":
+                    s = load_state()
+                    if not s.get("quest_start"):
+                        print("[dev] No active quest.")
+                    else:
+                        import time as _time
+                        dur = float(s.get("quest_duration", 60))
+                        s["quest_start"] = _time.time() - dur - 1
+                        save_state(s)
+                        print("[dev] Quest marked complete. Return to home to claim.")
                 else:
-                    # start now
-                    state = {"quest_start": time.time()}
-                    save_state(state)
-                    print("Quest started — will complete in 60 seconds.")
-                # re-render: recompute status_lines then scale ascii and render
-                status_lines = _build_status_lines()
-                greet_lines = 1 if player_name else 0
-                reserved = greet_lines + len(status_lines)
-                avail_h = max(0, inner_h - reserved)
-                scaled_ascii = scale_ascii(lines, win.width, avail_h)
-                display_lines = scaled_ascii
-                render_lines = display_lines[:]
-                render_lines.extend([""] * 3)
-                gre, evt = _make_greeting_and_event(player_name, estate_name)
-                if gre:
-                    render_lines.append(gre)
-                if evt:
-                    render_lines.append(evt)
-                render_lines.extend(status_lines)
-                win.render(render_lines[:inner_h])
+                    print("[dev] Commands: dev complete")
+
             elif verb in ("quit", "exit"):
                 print("Goodbye!")
                 return
+
             elif verb == "help":
-                print("Commands: quest, roster, help, quit")
-            elif verb == "roster":
-                # Enter roster interactive mode
-                quit_now = _enter_roster_mode()
-                if quit_now:
-                    return
+                print("Commands: quest, roster, spell, help, quit")
+
             else:
                 print("Unknown command. Type 'help'.")

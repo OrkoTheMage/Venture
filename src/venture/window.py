@@ -3,10 +3,9 @@ from __future__ import annotations
 class Window:
     """Simple terminal window renderer with a border."""
 
-    def __init__(self, width: int = 72, height: int = 20, title: str | None = None):
+    def __init__(self, width: int = 72, height: int = 20):
         self.width = max(10, width)
         self.height = max(5, height)
-        self.title = title
 
     def render(self, lines: list[str]) -> None:
         # clear screen and print lines to fill the window (no border)
@@ -17,14 +16,9 @@ class Window:
         for ln in content[: self.height]:
             print(ln[: self.width].ljust(self.width))
 
-    def pre_ascii_buffer(self) -> None:
-        """Print a small vertical buffer between other prints and ASCII art."""
+    def prompt(self, prompt: str) -> str:
         for _ in range(3):
             print()
-
-    def prompt(self, prompt: str) -> str:
-        """Print a small vertical buffer before showing an input prompt, then read input."""
-        self.pre_ascii_buffer()
         try:
             return input(prompt)
         except (EOFError, KeyboardInterrupt):

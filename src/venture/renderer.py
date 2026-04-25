@@ -83,13 +83,4 @@ def get_ascii_lines(cols: int, rows: int) -> list[str]:
     return best[1]
 
 
-def scale_ascii(src_lines: list[str], target_w: int, target_h: int) -> list[str]:
-    if target_h <= 0 or target_w <= 0:
-        return []
-    src_h = len(src_lines)
-    src_w = max((len(l) for l in src_lines), default=0)
-    if src_h == 0 or src_w == 0:
-        return [(" " * target_w) for _ in range(target_h)]
 
-    # simple fallback: do not scale, will be truncated when rendering
-    return [ln for ln in src_lines]
