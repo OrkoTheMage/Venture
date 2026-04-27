@@ -1,4 +1,4 @@
-# Orko's Venture
+# Venture
 A terminal-based RPG management game. Recruit heroes, send them on quests, manage your roster, and reclaim your ancestral estate.
 
 > **Private Alpha** — early access build. Expect rough edges and missing content.
@@ -6,6 +6,8 @@ A terminal-based RPG management game. Recruit heroes, send them on quests, manag
 ---
 
 ## Section 1 — Overview
+
+![Title Screen](docs/screenshots/TitleScreenv2.png)
 
 A terminal-based RPG management game. Recruit heroes, send them on quests, manage your roster, and reclaim your ancestral estate.
 
