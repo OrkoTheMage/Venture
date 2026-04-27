@@ -16,9 +16,14 @@ class Window:
         for ln in content[: self.height]:
             print(ln[: self.width].ljust(self.width))
 
-    def prompt(self, prompt: str) -> str:
-        for _ in range(3):
+    def prompt(self, prompt: str, hint: str = "") -> str:
+        if hint:
             print()
+            print(hint)
+            print()
+        else:
+            for _ in range(3):
+                print()
         try:
             return input(prompt)
         except (EOFError, KeyboardInterrupt):

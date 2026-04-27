@@ -23,11 +23,9 @@ def max_hp_for(hero_class: str, level: int) -> int:
     return table[min(max(int(level), 1), 5) - 1]
 
 
-# Fighter: quest time reduction (fraction) per level
-_FIGHTER_TIME_REDUCTION: dict[int, float] = {2: 0.12, 3: 0.24, 4: 0.38, 5: 0.50}
-
-# Cleric: post-quest HP heal percent per level
-_CLERIC_HEAL_PCT: dict[int, float] = {2: 0.10, 3: 0.15, 4: 0.20, 5: 0.25}
+# Fighter: quest time reduction — see classBonuses.py
+# Rogue: gold bonus         — see classBonuses.py
+# Cleric: HP heal            — see classBonuses.py
 
 
 def exp_to_level(exp: int) -> int:
@@ -43,14 +41,14 @@ def exp_to_level(exp: int) -> int:
 
 # ── class resistances / weaknesses ────────────────────────────────────────── #
 RESIST: dict[str, dict[str, list[str]]] = {
-    "Fighter": {"resist": ["Physical"], "weak": ["Magic"]},
-    "Rogue":   {"resist": [],           "weak": ["Magic", "Physical"]},
-    "Wizard":  {"resist": ["Magic"],    "weak": ["Physical"]},
-    "Cleric":  {"resist": ["Horror"],   "weak": ["Physical"]},
+    "Fighter": {"resist": ["Physical"], "weak": ["Magic"],    },  # neutral: Horror
+    "Rogue":   {"resist": ["Physical"], "weak": ["Horror"],   },  # neutral: Magic
+    "Wizard":  {"resist": ["Magic"],    "weak": ["Physical"], },  # neutral: Horror
+    "Cleric":  {"resist": ["Horror"],   "weak": ["Magic"],    },  # neutral: Physical
 }
 
 
-def calc_damage(hero_class: str, enemy_types: str, danger_level: int) -> float:
+def calc_damage(hero_class: str, enemy_types: str, danger_level: int, mage_armor: bool = False) -> float:
     """Return damage fraction (0-1) for one hero after a quest roll."""
     dl_ranges = {
         1: (0.01, 0.10),
@@ -70,10 +68,13 @@ def calc_damage(hero_class: str, enemy_types: str, danger_level: int) -> float:
     cfg = RESIST.get(hero_class, {"resist": [], "weak": []})
     modifier = 1.0
     for t in types:
-        if t in cfg["resist"]:
-            modifier *= 0.75
-        if t in cfg["weak"]:
-            modifier *= 1.50
+        if mage_armor:
+            modifier *= 0.75  # armor resists all types, negates weaknesses
+        else:
+            if t in cfg["resist"]:
+                modifier *= 0.75
+            if t in cfg["weak"]:
+                modifier *= 1.50
     return min(1.0, base * modifier)
 
 

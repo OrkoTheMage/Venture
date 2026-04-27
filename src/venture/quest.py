@@ -1,32 +1,43 @@
+import copy
 import random
+import textwrap
 import time
 from pathlib import Path
 
 from .state import load_state, save_state
 from .combat import (
     calc_damage, exp_to_level, max_hp_for,
-    _FIGHTER_TIME_REDUCTION, _CLERIC_HEAL_PCT,
+    RESIST,
+)
+from .classBonuses import FIGHTER_TIME_REDUCTION, CLERIC_HEAL_PCT, ROGUE_GOLD_BONUS
+from .spells import (
+    build_spell_card_lines,
+    cast_wizard_spell,
+    get_available_spells,
+    get_casters_for_spell,
+)
+from .recruit import build_recruit_offers, hire_recruit
+from .graveyard import build_graveyard_lines, record_fallen
+from .questDefinitions import (
+    QUEST_LORE,
+    QUEST_POOL,
+    INITIAL_QUEST,
+    BOSS_QUEST_FAMILY_BUSINESS,
+    BOSS_QUEST_SINS_OF_THE_FATHER,
 )
 
 # ── EXP constants ─────────────────────────────────────────────────────────── #
 _EXP_FOR_LENGTH: dict[str, int] = {"Short": 20, "Medium": 30, "Long": 40}
 _EXP_FOR_DANGER: dict[int, int] = {1: 10, 2: 20, 3: 30, 4: 40, 5: 50}
 
+_GOLD_FOR_DANGER: dict[int, int] = {1: 10, 2: 20, 3: 40, 4: 80, 5: 160}
+_GOLD_FOR_LENGTH: dict[str, int] = {"Short": 10, "Medium": 50, "Long": 100}
+
 _CARD_TPL = Path(__file__).parent / "ascii" / "questCard.txt"
 _ALLOWED_TYPES = ["Physical", "Magic", "Horror"]
 _LENGTH_SECONDS = {"Short": 300, "Medium": 1800, "Long": 3600}
 
-# ── Quest definitions ─────────────────────────────────────────────────────── #
-_INITIAL_QUEST = [
-    {"name": "Gather Allies", "danger": 1, "length": "Short", "enemies": "Physical"},
-]
-_REGULAR_QUESTS = [
-    {"name": "The Haunted Mill", "danger": 2, "length": "Short"},
-    {"name": "Bandit Ambush",    "danger": 4, "length": "Short"},
-    {"name": "Deep Cavern",      "danger": 5, "length": "Long"},
-]
-
-
+# ── Quest card rendering ─────────────────────────────────────────────────── #
 def _assign_enemies(quests: list[dict]) -> None:
     """Fill in random enemy types for any quest that doesn't have one yet."""
     for q in quests:
@@ -51,7 +62,7 @@ def _render_quest_card(tpl: str, q: dict) -> str:
             l = line.find("│")
             r = line.rfind("│")
             if l != -1 and r != -1 and r > l:
-                line = line[: l + 1] + q["name"].center(r - l - 1) + line[r:]
+                line = line[: l + 1] + f"\033[1m{q['name'].center(r - l - 1)}\033[0m" + line[r:]
         elif "Danger Level" in line and "││" in line:
             l = line.find("││") + 2
             r = line.rfind("││")
@@ -66,22 +77,66 @@ def _render_quest_card(tpl: str, q: dict) -> str:
             l = line.find("││") + 2
             r = line.rfind("││")
             if r > l:
-                label = "Enemy Types: "
-                padded = str(q["enemies"]).center(r - l - len(label))
-                line = line[:l] + label + padded + line[r:]
+                line = line[:l] + f"Enemy Types: {q['enemies']}".center(r - l) + line[r:]
         out.append(line)
     return "\n".join(out)
 
 
-def build_quest_cards(state: dict) -> tuple[list[dict], list[str]]:
-    """Return (quests list, display lines) for the current quest menu."""
-    import copy
-    if not state.get("gather_allies_done"):
-        quests = copy.deepcopy(_INITIAL_QUEST)
+def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], list[str]]:
+    # Use persisted quests if already rolled; otherwise generate and save them
+    if state.get("available_quests"):
+        quests = state["available_quests"]
     else:
-        quests = copy.deepcopy(_REGULAR_QUESTS)
+        if not state.get("gather_allies_done"):
+            quests = copy.deepcopy(INITIAL_QUEST)
+        else:
+            picked = random.sample(QUEST_POOL, min(3, len(QUEST_POOL)))
+            danger_ranges = [
+                random.randint(1, 2),  # slot 1: easy
+                random.randint(3, 4),  # slot 2: mid
+                random.randint(4, 5),  # slot 3: hard
+            ]
+            quests = []
+            for i, q in enumerate(picked):
+                danger = danger_ranges[i]
+                enemies = q["enemies"]
+                if danger < 4 and "/" in enemies:
+                    enemies = random.choice(enemies.split("/"))
+                quests.append({
+                    "name":    q["name"],
+                    "enemies": enemies,
+                    "danger":  danger,
+                    "length":  random.choice(["Short", "Medium", "Long"]),
+                })
+            # Inject boss quest into slot 3 if eligible and not yet completed
+            roster = state.get("roster", [])
+            graveyard = state.get("graveyard", [])
+            # Persist these flags once True so dismissed heroes don't erase eligibility
+            if not state.get("has_had_lvl3") and (
+                any(int(h.get("lvl", 1)) >= 3 for h in roster) or
+                any(int(e.get("lvl", 1)) >= 3 for e in graveyard)
+            ):
+                state["has_had_lvl3"] = True
+            if not state.get("has_had_lvl5") and (
+                any(int(h.get("lvl", 1)) >= 5 for h in roster) or
+                any(int(e.get("lvl", 1)) >= 5 for e in graveyard)
+            ):
+                state["has_had_lvl5"] = True
+            has_had_lvl3 = state.get("has_had_lvl3", False)
+            has_had_lvl5 = state.get("has_had_lvl5", False)
+            if has_had_lvl3 and state.get("gather_allies_done") and not state.get("family_business_done"):
+                quests[2] = copy.deepcopy(BOSS_QUEST_FAMILY_BUSINESS)
+            elif has_had_lvl5 and state.get("family_business_done") and not state.get("sins_of_the_father_done"):
+                quests[2] = copy.deepcopy(BOSS_QUEST_SINS_OF_THE_FATHER)
+        state["available_quests"] = quests
+        save_state(state)
 
-    _assign_enemies(quests)
+    if compact:
+        lines = [
+            f"  {i}. \033[1m{q['name']}\033[0m  Danger {q['danger']}  {q['length']}  {q['enemies']}"
+            for i, q in enumerate(quests, start=1)
+        ]
+        return quests, lines
 
     try:
         tpl = _CARD_TPL.read_text()
@@ -97,18 +152,78 @@ def build_quest_cards(state: dict) -> tuple[list[dict], list[str]]:
         return quests, fallback
 
 
-def build_party_screen(quest_name: str, roster: list[dict], selected: list[int], max_party: int) -> list[str]:
+def build_party_screen(
+    quest_name: str,
+    roster: list[dict],
+    selected: list[int],
+    max_party: int,
+    width: int = 80,
+    enemy_types: str = "",
+    danger: int = 0,
+    length: str = "Short",
+    state: dict | None = None,
+) -> list[str]:
     """Return display lines for the party selection screen."""
-    lines = [
-        f"Select party for: {quest_name}",
-        f"Choose {max_party} heroes  ({len(selected)}/{max_party} selected)",
-        "",
-    ]
+    title = f"Select party for: \033[1m{quest_name}\033[0m"
+    if danger:
+        title += f"  (Level {danger})"
+    lines: list[str] = [title, ""]
+
+    # Lore paragraph — word-wrapped to fit the window
+    lore = QUEST_LORE.get(quest_name)
+    if lore:
+        for wrapped_line in textwrap.wrap(lore, width=max(20, width - 2)):
+            lines.append(f"  {wrapped_line}")
+        lines.append("")
+
+    # Enemy type tooltip
+    if enemy_types:
+        types = [t.strip() for t in enemy_types.split("/")]
+        lines.append(f"  Enemies: {enemy_types}")
+        # Show quest duration (in seconds), adjusted for selected Fighters
+        base_dur = _LENGTH_SECONDS.get(length, 300)
+        dur_multiplier = 1.0
+        for s_idx in selected:
+            if 0 <= s_idx < len(roster):
+                hero = roster[s_idx]
+                if hero.get("class") == "Fighter":
+                    reduction = FIGHTER_TIME_REDUCTION.get(int(hero.get("lvl", 1)), 0.0)
+                    dur_multiplier *= (1.0 - reduction)
+        adj_dur = max(1, int(base_dur * dur_multiplier))
+        lines.append(f"  Duration: {adj_dur}s")
+        lines.append("")
+
+    mage_armor_map = (state or {}).get("mage_armor", {})
+    now = time.time()
+
+    lines.append(f"Choose {max_party} heroes  ({len(selected)}/{max_party} selected)")
+    lines.append("")
     for i, h in enumerate(roster, start=1):
         marker = "[x]" if (i - 1) in selected else "[ ]"
         hp_pct = int(float(h.get("hp", 100)) / max(1.0, float(h.get("max_hp", 100))) * 100)
-        lines.append(f"  {marker} {i}. {h['name']:<12} {h['class']:<8}  Lvl {h['lvl']}  HP {hp_pct}%")
-    lines += ["", "Type a number to toggle, 'go' to confirm, 'back' to cancel."]
+        # Per-hero resistance tooltip
+        hero_class = h.get("class", "")
+        cfg = RESIST.get(hero_class, {"resist": [], "weak": []})
+        has_armor = mage_armor_map.get(h["name"], 0) > now
+        if enemy_types:
+            types = [t.strip() for t in enemy_types.split("/")]
+            if has_armor:
+                tip = "  [Mage Armor] RES: All"
+            else:
+                resists = [t for t in types if t in cfg["resist"]]
+                weaks   = [t for t in types if t in cfg["weak"]]
+                if resists and weaks:
+                    tip = f"  RES: {', '.join(resists)}  WEAK: {', '.join(weaks)}"
+                elif resists:
+                    tip = f"  RES: {', '.join(resists)}"
+                elif weaks:
+                    tip = f"  WEAK: {', '.join(weaks)}"
+                else:
+                    tip = "  Neutral"
+        else:
+            tip = "  [Mage Armor]" if has_armor else ""
+        lines.append(f"  {marker} {i}. {h['name']:<12} {h['class']:<8}  Lvl {h['lvl']}  HP {hp_pct}%{tip}")
+    lines += [""]
     return lines
 
 
@@ -141,6 +256,18 @@ def _apply_scripted_rewards(s: dict) -> list[str]:
                 s["roster"].append(hero)
                 rewards.append(f"{hero['name']} the {hero['class']} joins your roster")
         s["gather_allies_done"] = True
+    if s.get("quest_name") == "The Family Business":
+        items = s.get("items", [])
+        items.append("Signet Ring")
+        s["items"] = items
+        s["family_business_done"] = True
+        rewards.append("Found: Signet Ring")
+    if s.get("quest_name") == "Sins of the Father":
+        items = s.get("items", [])
+        items.append("Ancestral Skull")
+        s["items"] = items
+        s["sins_of_the_father_done"] = True
+        rewards.append("Found: Ancestral Skull")
     return rewards
 
 
@@ -157,22 +284,29 @@ def apply_quest_damage() -> dict:
     party_names = s.get("quest_party")  # None = all heroes (e.g. Gather Allies)
 
     quest_exp = _EXP_FOR_LENGTH.get(length, 20) + _EXP_FOR_DANGER.get(danger, 10)
+    quest_gold = _GOLD_FOR_DANGER.get(danger, 10) + _GOLD_FOR_LENGTH.get(length, 10)
 
     damage_taken: list[tuple[str, int, int]] = []
     fallen: list[str] = []
+    mage_armor_map = s.get("mage_armor", {})
+    now = time.time()
     for h in roster:
         if party_names is not None and h["name"] not in party_names:
             continue
-        dmg = calc_damage(h.get("class", "Fighter"), enemy_types, danger)
+        has_mage_armor = mage_armor_map.get(h["name"], 0) > now
+        dmg = calc_damage(h.get("class", "Fighter"), enemy_types, danger, mage_armor=has_mage_armor)
         max_hp = float(h.get("max_hp", 100))
         hp_lost = max_hp * dmg
         h["hp"] = max(0.0, float(h.get("hp", max_hp)) - hp_lost)
         if h["hp"] == 0.0:
             fallen.append(h["name"])
-            damage_taken.append((h["name"], int(dmg * 100), 0))
+            damage_taken.append((h["name"], int(dmg * 100), 0, None))
         else:
+            old_lvl = int(h.get("lvl", 1))
             _award_exp(h, quest_exp)
-            damage_taken.append((h["name"], int(dmg * 100), quest_exp))
+            new_lvl = int(h.get("lvl", 1))
+            leveled_to = new_lvl if new_lvl != old_lvl else None
+            damage_taken.append((h["name"], int(dmg * 100), quest_exp, leveled_to))
 
     # Cleric: heal a random living party hero after combat
     living_party = [
@@ -180,33 +314,54 @@ def apply_quest_damage() -> dict:
         if h["name"] not in fallen
         and (party_names is None or h["name"] in party_names)
     ]
-    best_cleric_lvl = max(
-        (int(h.get("lvl", 1)) for h in living_party if h.get("class") == "Cleric"),
-        default=0,
-    )
-    heal_pct = _CLERIC_HEAL_PCT.get(best_cleric_lvl, 0.0)
+    # Cleric: each Cleric in the living party heals a random living hero
     cleric_rewards: list[str] = []
-    if heal_pct > 0 and living_party:
-        target = random.choice(living_party)
-        old_hp = float(target.get("hp", 0))
-        max_hp_val = float(target.get("max_hp", 100))
-        target["hp"] = min(max_hp_val, old_hp + max_hp_val * heal_pct)
-        healed_pct = int((target["hp"] - old_hp) / max_hp_val * 100)
-        if healed_pct > 0:
-            cleric_rewards.append(f"Cleric blessed {target['name']}: +{healed_pct}% HP restored")
+    for cleric in [h for h in living_party if h.get("class") == "Cleric"]:
+        heal_pct = CLERIC_HEAL_PCT.get(int(cleric.get("lvl", 1)), 0.0)
+        if heal_pct > 0 and living_party:
+            target = random.choice(living_party)
+            old_hp = float(target.get("hp", 0))
+            max_hp_val = float(target.get("max_hp", 100))
+            target["hp"] = min(max_hp_val, old_hp + max_hp_val * heal_pct)
+            healed_pct = int((target["hp"] - old_hp) / max_hp_val * 100)
+            if healed_pct > 0:
+                target_desc = "themself" if target["name"] == cleric["name"] else target["name"]
+                cleric_rewards.append(f"{cleric['name']} blessed {target_desc}: +{healed_pct}% HP restored")
 
     s["roster"] = [h for h in roster if h["name"] not in fallen]
 
-    rewards = _apply_scripted_rewards(s) + cleric_rewards
+    # Record fallen heroes in the graveyard
+    if fallen:
+        record_fallen(s, fallen, roster, quest_name, enemy_types)
+
+    # Rogue bonus: sum gold bonuses from all Rogues in the living party
+    total_rogue_pct = sum(
+        ROGUE_GOLD_BONUS.get(int(h.get("lvl", 1)), 0.0)
+        for h in living_party if h.get("class") == "Rogue"
+    )
+    if total_rogue_pct > 0:
+        bonus = int(quest_gold * total_rogue_pct)
+        quest_gold += bonus
+        rewards_rogue = [f"Rogues swiped an extra {bonus}G ({int(total_rogue_pct * 100)}% bonus)"]
+    else:
+        rewards_rogue = []
+
+    s["gold"] = int(s.get("gold", 0)) + quest_gold
+    s["week"] = int(s.get("week", 0)) + 1
+
+    rewards = _apply_scripted_rewards(s) + cleric_rewards + rewards_rogue
+    rewards.append(f"Party earned {quest_gold}G")
 
     for key in (
         "quest_start", "quest_id", "quest_name", "quest_danger",
         "quest_enemies", "quest_length", "quest_duration", "quest_party",
+        "available_quests", "recruit_offers",
     ):
         s.pop(key, None)
     s["last_regen"] = time.time()
     save_state(s)
     return {"damage_taken": damage_taken, "rewards": rewards, "fallen": fallen}
+
 
 
 def quest_info() -> dict:
@@ -236,14 +391,14 @@ def start_quest(state: dict, chosen: dict, party: list[dict]) -> None:
     """Persist all quest keys into state and save."""
     length = chosen.get("length", "Short")
     dur = _LENGTH_SECONDS.get(length, 300)
-    # Fighter bonus: best time reduction among Fighters in party
-    best_reduction = max(
-        (_FIGHTER_TIME_REDUCTION.get(int(h.get("lvl", 1)), 0.0)
-         for h in party if h.get("class") == "Fighter"),
-        default=0.0,
-    )
-    if best_reduction > 0:
-        dur = max(1, int(dur * (1.0 - best_reduction)))
+    # Fighter bonus: each Fighter's time reduction applies multiplicatively
+    dur_multiplier = 1.0
+    for h in party:
+        if h.get("class") == "Fighter":
+            reduction = FIGHTER_TIME_REDUCTION.get(int(h.get("lvl", 1)), 0.0)
+            dur_multiplier *= (1.0 - reduction)
+    if dur_multiplier < 1.0:
+        dur = max(1, int(dur * dur_multiplier))
     state.update({
         "quest_start":    time.time(),
         "quest_id":       chosen.get("_index", 1),
@@ -255,84 +410,3 @@ def start_quest(state: dict, chosen: dict, party: list[dict]) -> None:
         "quest_party":    [h["name"] for h in party],
     })
     save_state(state)
-
-
-# ── Wizard spells ──────────────────────────────────────────────────────────── #
-
-def get_wizard_spells(state: dict) -> list[dict]:
-    """Return available wizard spells for all wizards in the roster.
-
-    Each entry: {wizard, spell, desc, can_cast, reason}
-    """
-    import datetime
-    today = datetime.date.today().isoformat()
-    cast_log = state.get("spell_cast_log", {})
-    spells: list[dict] = []
-
-    for h in state.get("roster", []):
-        if h.get("class") != "Wizard":
-            continue
-        lvl = int(h.get("lvl", 1))
-        name = h["name"]
-        hero_log = cast_log.get(name, {})
-
-        if lvl >= 5:
-            already = hero_log.get("inspire") == today
-            spells.append({
-                "wizard":    name,
-                "spell":     "inspire",
-                "desc":      "Give 300 EXP to a chosen hero",
-                "can_cast":  not already,
-                "reason":    "Already cast today" if already else "",
-            })
-
-    return spells
-
-
-def cast_wizard_spell(
-    state: dict, wizard_name: str, spell: str, target_hero: str | None = None
-) -> tuple[bool, str]:
-    """Cast a wizard spell. Returns (success, message)."""
-    import datetime
-    today = datetime.date.today().isoformat()
-
-    roster = state.get("roster", [])
-    wizard = next((h for h in roster if h["name"] == wizard_name), None)
-    if wizard is None:
-        return False, f"{wizard_name} not found in roster."
-    if wizard.get("class") != "Wizard":
-        return False, f"{wizard_name} is not a Wizard."
-
-    lvl = int(wizard.get("lvl", 1))
-    cast_log = state.setdefault("spell_cast_log", {})
-    hero_log = cast_log.setdefault(wizard_name, {})
-
-    if spell == "inspire":
-        if lvl < 5:
-            return False, f"{wizard_name} needs level 5 to cast Inspire."
-        if hero_log.get("inspire") == today:
-            return False, "Inspire already cast today."
-        if target_hero is None:
-            return False, "Inspire requires a target hero."
-        target = next(
-            (h for h in roster if h["name"].lower() == target_hero.lower()), None
-        )
-        if target is None:
-            return False, f"Hero '{target_hero}' not found."
-        target["exp"] = int(target.get("exp", 0)) + 300
-        new_lvl = exp_to_level(target["exp"])
-        old_lvl = int(target.get("lvl", 1))
-        target["lvl"] = new_lvl
-        if new_lvl != old_lvl:
-            old_max = float(target.get("max_hp", 100))
-            new_max = float(max_hp_for(target.get("class", "Fighter"), new_lvl))
-            if old_max > 0:
-                target["hp"] = min(new_max, float(target.get("hp", old_max)) / old_max * new_max)
-            target["max_hp"] = new_max
-        hero_log["inspire"] = today
-        state["roster"] = roster
-        save_state(state)
-        level_msg = f" (leveled up to {new_lvl}!)" if new_lvl != old_lvl else ""
-        return True, f"{target['name']} gained 300 EXP{level_msg}."
-
-    return False, f"Unknown spell '{spell}'."

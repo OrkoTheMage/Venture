@@ -54,5 +54,8 @@ htmlcov/
 .AppleDouble
 .LSOverride
 
+# Dev / cheat commands (local only)
+src/venture/dev.py
+
 # Logs
 *.log
