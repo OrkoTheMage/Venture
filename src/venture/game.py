@@ -99,7 +99,7 @@ class Game:
             greeting_lines = 2 if player_name else 0
             _hints: list[str] = []
             if force_roster_hint or (player_name and not roster_seen):
-                _hints.append("Type 'roster' to view your roster.")
+                _hints.append('Type "roster" to view your roster.')
             if player_name and state.get("gather_allies_done") and not state.get("recruit_hint_seen"):
                 _hints.append('Type "recruit" to see a list of recruitable party members')
             _has_lvl2_wiz = any(
@@ -110,6 +110,13 @@ class Game:
                 _hints.append('Type "spells" to see a list of castable spells')
             if player_name and state.get("graveyard") and not state.get("graveyard_hint_seen"):
                 _hints.append('Type "graveyard" to see a list of fallen heros')
+            # Show journal hint if the player has completed at least one journal item
+            try:
+                j_entries = journal_mod.get_journal_entries(state)
+                if player_name and any(e.get("done") for e in j_entries) and not state.get("journal_hint_seen"):
+                    _hints.append('Type "journal" to see a list of goals for the estate.')
+            except Exception:
+                pass
             hint_lines = len(_hints) * 2  # blank line + text per hint
             avail_h = max(0, inner_h - 1 - stats_extra - greeting_lines - hint_lines - len(status_lines))
             display = [l[:win.width] for l in ascii_lines][:avail_h]
@@ -180,6 +187,16 @@ class Game:
         def _enter_spell_mode() -> bool:
             """Returns True if the player wants to quit."""
             nonlocal state
+            # Block opening the spells view while a quest is active
+            qi = quest_mod.quest_info()
+            if qi.get("running"):
+                lines = ["", "Cannot cast spells while a quest is in progress", ""]
+                win.render(lines[:win.height])
+                try:
+                    _ = win.prompt("spells> ", hint="Press 'ENTER' to return").strip()
+                except (EOFError, KeyboardInterrupt):
+                    pass
+                return False
 
             def _show_spells(msg: str = ""):
                 lines = quest_mod.build_spell_card_lines(state, compact=compact)
@@ -433,10 +450,15 @@ class Game:
                 _render_home(force_roster_hint=True)
 
         # ── main command loop ─────────────────────────────────────────────── #
+        skip_prompt = False
         while True:
             combat.apply_regen()
             try:
-                cmd = win.prompt("> ").strip()
+                if skip_prompt:
+                    cmd = ""
+                    skip_prompt = False
+                else:
+                    cmd = win.prompt("> ").strip()
             except (EOFError, KeyboardInterrupt):
                 print("Goodbye!")
                 return
@@ -485,6 +507,9 @@ class Game:
             elif verb == "spells":
                 state["spells_hint_seen"] = True
                 save_state(state)
+                if quest_mod.quest_info().get("running"):
+                    print("Cannot cast spells while a quest is in progress.")
+                    continue
                 if _enter_spell_mode():
                     return
                 _render_home()
@@ -525,14 +550,22 @@ class Game:
                     _ = win.prompt("graveyard> ", hint="Press 'ENTER' to return").strip()
                 except (EOFError, KeyboardInterrupt):
                     pass
+                _render_home()
+                skip_prompt = True
 
             elif verb == "journal":
+                state["journal_hint_seen"] = True
+                save_state(state)
                 lines = journal_mod.build_journal_lines(state)
                 win.render(lines[:win.height])
                 try:
                     _ = win.prompt("journal> ", hint="Press 'ENTER' to return").strip()
                 except (EOFError, KeyboardInterrupt):
                     pass
+                _render_home()
+                skip_prompt = True
+                _render_home()
+                skip_prompt = True
 
             elif verb == "help":
                 print("Commands: quest, roster, recruit, spells, graveyard, journal, help, quit")
