@@ -12,7 +12,6 @@ def main() -> None:
     game = Game()
     if args.debug:
         print("Starting venture (debug mode)")
-    # Only show the start screen
     game.play()
 
 
