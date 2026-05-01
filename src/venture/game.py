@@ -1,5 +1,6 @@
 import random
 import shutil
+import shlex
 
 from .window import Window
 from .renderer import get_ascii_lines
@@ -38,11 +39,12 @@ class Game:
             qi = quest_mod.quest_info()
             status: list[str] = []
             if qi.get("running"):
-                rem = int(qi["remaining"])
+                rem = qi["remaining"]
+                rem_str = quest_mod.format_duration(rem)
                 pct = int(min(100, qi["elapsed"] / qi["duration"] * 100))
                 bw = max(10, min(40, win.width - 20))
                 bar = "[" + "#" * int(bw * pct / 100) + "-" * (bw - int(bw * pct / 100)) + "]"
-                status += ["", f"Quest: in progress {bar} {pct}% ({rem}s)",
+                status += ["", f"Quest: in progress {bar} {pct}% ({rem_str})",
                            "Leave and come back to see progress persistently."]
             elif qi.get("completed"):
                 summary = quest_mod.apply_quest_damage()
@@ -158,12 +160,15 @@ class Game:
             save_state(state)
             roster_seen = True
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     raw = win.prompt("roster> ").strip()
                 except (EOFError, KeyboardInterrupt):
                     raw = ""
-                parts = raw.split()
+                try:
+                    parts = shlex.split(raw)
+                except ValueError:
+                    parts = raw.split()
                 verb  = parts[0].lower() if parts else ""
                 # Page navigation: a bare digit navigates to that roster page
                 if verb.isdigit():
@@ -206,7 +211,7 @@ class Game:
 
             _show_spells()
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     raw = win.prompt("spells> ", hint="Type a number to cast, or press 'ENTER' to return").strip()
                 except (EOFError, KeyboardInterrupt):
@@ -313,7 +318,7 @@ class Game:
 
             _show_recruits()
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     raw = win.prompt("recruit> ", hint="Type a number to hire, or press 'ENTER' to return").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -345,7 +350,7 @@ class Game:
 
             _draw()
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     raw = win.prompt("quest> ", hint="Type a number to toggle, 'venture' to confirm, or press 'ENTER' to return").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -379,7 +384,7 @@ class Game:
             win.render(card_lines[:win.height])
 
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     choice = win.prompt("quest> ", hint="Type a number to choose a quest or press 'ENTER' to return").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -415,7 +420,7 @@ class Game:
                         quest_mod.start_quest(state, chosen, party)
                         print(
                             f"Quest '{chosen['name']}' started — "
-                            f"will complete in {state['quest_duration']}s "
+                            f"will complete in {quest_mod.format_duration(state['quest_duration'])} "
                             f"({chosen['length']})."
                         )
                         return False
@@ -452,7 +457,7 @@ class Game:
         # ── main command loop ─────────────────────────────────────────────── #
         skip_prompt = False
         while True:
-            combat.apply_regen()
+            combat.apply_regen(state)
             try:
                 if skip_prompt:
                     cmd = ""
@@ -467,7 +472,11 @@ class Game:
                 if not cmd:
                     pass
                 else:
-                    verb_check = cmd.split()[0].lower()
+                    try:
+                        _parts = shlex.split(cmd)
+                    except ValueError:
+                        _parts = cmd.split()
+                    verb_check = _parts[0].lower() if _parts else ""
                     if verb_check in ("quit", "exit"):
                         print("Goodbye!")
                         return
@@ -484,13 +493,16 @@ class Game:
                 _render_home()
                 continue
 
-            parts = cmd.split()
-            verb  = parts[0].lower()
+            try:
+                parts = shlex.split(cmd)
+            except ValueError:
+                parts = cmd.split()
+            verb  = parts[0].lower() if parts else ""
 
             if verb == "quest":
                 if quest_mod.quest_info().get("running"):
-                    rem = int(quest_mod.quest_info()["remaining"])
-                    print(f"Already on a quest — {rem}s remaining.")
+                    qi2 = quest_mod.quest_info()
+                    print(f"Already on a quest — {quest_mod.format_duration(qi2['remaining'])} remaining.")
                     continue
                 if _enter_quest_mode():
                     return

@@ -37,6 +37,15 @@ _CARD_TPL = Path(__file__).parent / "ascii" / "questCard.txt"
 _ALLOWED_TYPES = ["Physical", "Magic", "Horror"]
 _LENGTH_SECONDS = {"Short": 300, "Medium": 1800, "Long": 3600}
 
+
+def format_duration(seconds: float | int) -> str:
+    try:
+        total = int(max(0, float(seconds)))
+    except Exception:
+        total = 0
+    mins, secs = divmod(total, 60)
+    return f"{mins}m {secs}s"
+
 # ── Quest card rendering ─────────────────────────────────────────────────── #
 def _assign_enemies(quests: list[dict]) -> None:
     """Fill in random enemy types for any quest that doesn't have one yet."""
@@ -190,7 +199,7 @@ def build_party_screen(
                     reduction = FIGHTER_TIME_REDUCTION.get(int(hero.get("lvl", 1)), 0.0)
                     dur_multiplier *= (1.0 - reduction)
         adj_dur = max(1, int(base_dur * dur_multiplier))
-        lines.append(f"  Duration: {adj_dur}s")
+        lines.append(f"  Duration: {format_duration(adj_dur)}")
         lines.append("")
 
     mage_armor_map = (state or {}).get("mage_armor", {})
@@ -352,13 +361,18 @@ def apply_quest_damage() -> dict:
     rewards = _apply_scripted_rewards(s) + cleric_rewards + rewards_rogue
     rewards.append(f"Party earned {quest_gold}G")
 
+    try:
+        quest_end_time = float(s.get("quest_start", time.time())) + float(s.get("quest_duration", 0))
+    except Exception:
+        quest_end_time = time.time()
+
     for key in (
         "quest_start", "quest_id", "quest_name", "quest_danger",
         "quest_enemies", "quest_length", "quest_duration", "quest_party",
         "available_quests", "recruit_offers",
     ):
         s.pop(key, None)
-    s["last_regen"] = time.time()
+    s["last_regen"] = quest_end_time
     save_state(s)
     return {"damage_taken": damage_taken, "rewards": rewards, "fallen": fallen}
 
