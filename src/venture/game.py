@@ -1,5 +1,6 @@
 import random
 import shutil
+import shlex
 
 from .window import Window
 from .renderer import get_ascii_lines
@@ -163,7 +164,10 @@ class Game:
                     raw = win.prompt("roster> ").strip()
                 except (EOFError, KeyboardInterrupt):
                     raw = ""
-                parts = raw.split()
+                try:
+                    parts = shlex.split(raw)
+                except ValueError:
+                    parts = raw.split()
                 verb  = parts[0].lower() if parts else ""
                 # Page navigation: a bare digit navigates to that roster page
                 if verb.isdigit():
@@ -467,7 +471,11 @@ class Game:
                 if not cmd:
                     pass
                 else:
-                    verb_check = cmd.split()[0].lower()
+                    try:
+                        _parts = shlex.split(cmd)
+                    except ValueError:
+                        _parts = cmd.split()
+                    verb_check = _parts[0].lower() if _parts else ""
                     if verb_check in ("quit", "exit"):
                         print("Goodbye!")
                         return
@@ -484,8 +492,11 @@ class Game:
                 _render_home()
                 continue
 
-            parts = cmd.split()
-            verb  = parts[0].lower()
+            try:
+                parts = shlex.split(cmd)
+            except ValueError:
+                parts = cmd.split()
+            verb  = parts[0].lower() if parts else ""
 
             if verb == "quest":
                 if quest_mod.quest_info().get("running"):

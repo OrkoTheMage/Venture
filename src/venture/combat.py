@@ -103,6 +103,3 @@ def apply_regen() -> None:
     s["roster"] = roster
     s["last_regen"] = time.time()
     save_state(s)
-
-
-

@@ -112,15 +112,25 @@ def handle_roster_command(verb: str, parts: list[str], state: dict) -> str | Non
         if len(parts) < 3:
             print("Usage: rename [hero name] [new name]")
             return None
+        roster = state.get("roster") or []
         old_name = parts[1]
         new_name = " ".join(parts[2:])
-        roster = state.get("roster") or []
         for h in roster:
             if h.get("name", "").lower() == old_name.lower():
                 h["name"] = new_name
                 save_state(state)
                 print(f"Renamed {old_name} -> {new_name}")
-                return "list"
+                return "list"               
+        for split in range(2, len(parts) - 0):
+            candidate_old = " ".join(parts[1:split])
+            candidate_new = " ".join(parts[split:])
+            for h in roster:
+                if h.get("name", "").lower() == candidate_old.lower():
+                    h["name"] = candidate_new
+                    save_state(state)
+                    print(f"Renamed {candidate_old} -> {candidate_new}")
+                    return "list"
+
         print(f"Hero '{old_name}' not found in roster.")
         return None
     if verb == "dismiss":
