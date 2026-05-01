@@ -159,7 +159,7 @@ class Game:
             save_state(state)
             roster_seen = True
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     raw = win.prompt("roster> ").strip()
                 except (EOFError, KeyboardInterrupt):
@@ -210,7 +210,7 @@ class Game:
 
             _show_spells()
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     raw = win.prompt("spells> ", hint="Type a number to cast, or press 'ENTER' to return").strip()
                 except (EOFError, KeyboardInterrupt):
@@ -317,7 +317,7 @@ class Game:
 
             _show_recruits()
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     raw = win.prompt("recruit> ", hint="Type a number to hire, or press 'ENTER' to return").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -349,7 +349,7 @@ class Game:
 
             _draw()
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     raw = win.prompt("quest> ", hint="Type a number to toggle, 'venture' to confirm, or press 'ENTER' to return").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -383,7 +383,7 @@ class Game:
             win.render(card_lines[:win.height])
 
             while True:
-                combat.apply_regen()
+                combat.apply_regen(state)
                 try:
                     choice = win.prompt("quest> ", hint="Type a number to choose a quest or press 'ENTER' to return").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -456,7 +456,7 @@ class Game:
         # ── main command loop ─────────────────────────────────────────────── #
         skip_prompt = False
         while True:
-            combat.apply_regen()
+            combat.apply_regen(state)
             try:
                 if skip_prompt:
                     cmd = ""

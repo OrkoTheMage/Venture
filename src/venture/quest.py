@@ -352,13 +352,18 @@ def apply_quest_damage() -> dict:
     rewards = _apply_scripted_rewards(s) + cleric_rewards + rewards_rogue
     rewards.append(f"Party earned {quest_gold}G")
 
+    try:
+        quest_end_time = float(s.get("quest_start", time.time())) + float(s.get("quest_duration", 0))
+    except Exception:
+        quest_end_time = time.time()
+
     for key in (
         "quest_start", "quest_id", "quest_name", "quest_danger",
         "quest_enemies", "quest_length", "quest_duration", "quest_party",
         "available_quests", "recruit_offers",
     ):
         s.pop(key, None)
-    s["last_regen"] = time.time()
+    s["last_regen"] = quest_end_time
     save_state(s)
     return {"damage_taken": damage_taken, "rewards": rewards, "fallen": fallen}
 

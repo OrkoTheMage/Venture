@@ -78,11 +78,9 @@ def calc_damage(hero_class: str, enemy_types: str, danger_level: int, mage_armor
     return min(1.0, base * modifier)
 
 
-def apply_regen() -> None:
-    """Regenerate 1% max_hp per minute while no quest is active."""
-    s = load_state()
-    if s.get("quest_start"):
-        return
+def apply_regen(state: dict | None = None) -> None:
+    own_state = state is None
+    s = load_state() if own_state else state
     roster = s.get("roster", [])
     if not roster:
         return
@@ -97,7 +95,11 @@ def apply_regen() -> None:
         elapsed_min = 0.0
     if elapsed_min < 0.01:
         return
+    # Heroes currently on a quest don't regen; benched heroes do.
+    quest_party: set[str] = set(s.get("quest_party") or [])
     for h in roster:
+        if quest_party and h["name"] in quest_party:
+            continue
         max_hp = float(h.get("max_hp", 100))
         h["hp"] = min(max_hp, float(h.get("hp", max_hp)) + max_hp * elapsed_min * 0.01)
     s["roster"] = roster
