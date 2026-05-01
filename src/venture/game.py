@@ -39,11 +39,12 @@ class Game:
             qi = quest_mod.quest_info()
             status: list[str] = []
             if qi.get("running"):
-                rem = int(qi["remaining"])
+                rem = qi["remaining"]
+                rem_str = quest_mod.format_duration(rem)
                 pct = int(min(100, qi["elapsed"] / qi["duration"] * 100))
                 bw = max(10, min(40, win.width - 20))
                 bar = "[" + "#" * int(bw * pct / 100) + "-" * (bw - int(bw * pct / 100)) + "]"
-                status += ["", f"Quest: in progress {bar} {pct}% ({rem}s)",
+                status += ["", f"Quest: in progress {bar} {pct}% ({rem_str})",
                            "Leave and come back to see progress persistently."]
             elif qi.get("completed"):
                 summary = quest_mod.apply_quest_damage()
@@ -419,7 +420,7 @@ class Game:
                         quest_mod.start_quest(state, chosen, party)
                         print(
                             f"Quest '{chosen['name']}' started — "
-                            f"will complete in {state['quest_duration']}s "
+                            f"will complete in {quest_mod.format_duration(state['quest_duration'])} "
                             f"({chosen['length']})."
                         )
                         return False
@@ -500,8 +501,8 @@ class Game:
 
             if verb == "quest":
                 if quest_mod.quest_info().get("running"):
-                    rem = int(quest_mod.quest_info()["remaining"])
-                    print(f"Already on a quest — {rem}s remaining.")
+                    qi2 = quest_mod.quest_info()
+                    print(f"Already on a quest — {quest_mod.format_duration(qi2['remaining'])} remaining.")
                     continue
                 if _enter_quest_mode():
                     return
