@@ -95,6 +95,25 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
     # Use persisted quests if already rolled; otherwise generate and save them
     if state.get("available_quests"):
         quests = state["available_quests"]
+        changed = False
+        if not any(q.get("length") == "Short" for q in quests):
+            quests[0]["length"] = "Short"
+            changed = True
+        for idx, q in enumerate(quests):
+            if q.get("boss"):
+                continue
+            if idx == 0:
+                min_d, max_d = 1, 2
+            elif idx == 1:
+                min_d, max_d = 2, 3
+            else:
+                min_d, max_d = 4, 5
+            if int(q.get("danger", 1)) < min_d or int(q.get("danger", 1)) > max_d:
+                q["danger"] = random.randint(min_d, max_d)
+                changed = True
+        if changed:
+            state["available_quests"] = quests
+            save_state(state)
     else:
         if not state.get("gather_allies_done"):
             quests = copy.deepcopy(INITIAL_QUEST)
@@ -102,7 +121,7 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
             picked = random.sample(QUEST_POOL, min(3, len(QUEST_POOL)))
             danger_ranges = [
                 random.randint(1, 2),  # slot 1: easy
-                random.randint(3, 4),  # slot 2: mid
+                random.randint(2, 3),  # slot 2: mid
                 random.randint(4, 5),  # slot 3: hard
             ]
             quests = []
@@ -117,6 +136,21 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
                     "danger":  danger,
                     "length":  random.choice(["Short", "Medium", "Long"]),
                 })
+            # Ensure at least one Short quest is present
+            if not any(q.get("length") == "Short" for q in quests):
+                quests[0]["length"] = "Short"
+            # Enforce slot danger ranges unless a slot is a boss or explicitly replaced
+            for idx, q in enumerate(quests):
+                if q.get("boss"):
+                    continue
+                if idx == 0:
+                    min_d, max_d = 1, 2
+                elif idx == 1:
+                    min_d, max_d = 2, 3
+                else:
+                    min_d, max_d = 4, 5
+                if int(q.get("danger", 1)) < min_d or int(q.get("danger", 1)) > max_d:
+                    q["danger"] = random.randint(min_d, max_d)
             # Inject boss quest into slot 3 if eligible and not yet completed
             roster = state.get("roster", [])
             graveyard = state.get("graveyard", [])
