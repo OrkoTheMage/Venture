@@ -21,19 +21,35 @@ def build_recruit_offers(state: dict) -> list[dict]:
         return state["recruit_offers"]
 
     classes = ["Fighter", "Rogue", "Wizard", "Cleric"]
-    existing_names = {h["name"].lower() for h in state.get("roster", [])}
+    roster = state.get("roster") or []
+    orig_roster_count = len(roster)
+
+    # Decide how many offers to generate (normally 3, but 4 when roster is 0)
+    num_offers = 4 if orig_roster_count == 0 else 3
+
+    existing_names = {h["name"].lower() for h in roster}
     available_names = [n for n in _RECRUIT_NAMES if n.lower() not in existing_names]
-    if len(available_names) < 3:
+    if len(available_names) < num_offers:
         available_names = _RECRUIT_NAMES[:]
-    chosen_names = random.sample(available_names, 3)
-    chosen_classes = random.sample(classes, 3)
+    chosen_names = random.sample(available_names, num_offers)
+    chosen_classes = random.sample(classes, num_offers)
+
+    # Determine levels and prices based on current roster size per rules:
+    # roster >=4 or roster ==3:  [(1,0), (2,300), (3,500)]
+    # roster ==2:                 [(1,0), (1,0), (2,300)]
+    # roster ==1:                 [(1,0), (1,0), (1,0)]
+    # roster ==0:                 four offers all (1,0)
+    if orig_roster_count >= 3:
+        template = [ (1, 0), (2, 300), (3, 500) ]
+    elif orig_roster_count == 2:
+        template = [ (1, 0), (1, 0), (2, 300) ]
+    elif orig_roster_count == 1:
+        template = [ (1, 0), (1, 0), (1, 0) ]
+    else:  # orig_roster_count == 0
+        template = [ (1, 0), (1, 0), (1, 0), (1, 0) ]
 
     offers: list[dict] = []
-    for i, (name, cls, lvl, price) in enumerate([
-        (chosen_names[0], chosen_classes[0], 1, 0),
-        (chosen_names[1], chosen_classes[1], 2, 300),
-        (chosen_names[2], chosen_classes[2], 3, 500),
-    ]):
+    for (name, cls), (lvl, price) in zip(zip(chosen_names, chosen_classes), template):
         hp = float(max_hp_for(cls, lvl))
         offers.append({
             "name": name, "class": cls, "lvl": lvl,

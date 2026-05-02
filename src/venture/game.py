@@ -42,13 +42,31 @@ class Game:
                 rem = qi["remaining"]
                 rem_str = quest_mod.format_duration(rem)
                 pct = int(min(100, qi["elapsed"] / qi["duration"] * 100))
-                bw = max(10, min(40, win.width - 20))
+                bw = max(10, min(30, win.width - 30))
                 bar = "[" + "#" * int(bw * pct / 100) + "-" * (bw - int(bw * pct / 100)) + "]"
-                status += ["", f"Quest: in progress {bar} {pct}% ({rem_str})",
-                           "Leave and come back to see progress persistently."]
+                # Show quest name, danger, and length (with optional lore) before progress
+                qname = state.get("quest_name")
+                if qname:
+                    try:
+                        import textwrap
+                        danger = int(state.get("quest_danger", 0))
+                        length = state.get("quest_length", "")
+                        status += ["", f"\033[1m{qname}\033[0m (Danger: {danger} | Length: {length})"]
+                        # spacer line between title and lore
+                        status.append("")
+                        lore = quest_mod.QUEST_LORE.get(qname)
+                        if lore:
+                            for l in textwrap.wrap(lore, width=max(20, win.width - 6))[:3]:
+                                status.append(f"  {l}")
+                    except Exception:
+                        pass
+                # Then show basic progress bar and persistence hint
+                    status += ["", f"\033[1mQuest Progress:\033[0m {bar} {pct}% ({rem_str})",
+                           "Leave and come back to see progress or press 'ENTER' to refresh."]
             elif qi.get("completed"):
                 summary = quest_mod.apply_quest_damage()
                 state = load_state()
+
                 roster_seen = state.get("roster_seen")
                 lines = ["", "Quest Complete!"]
                 if summary["damage_taken"]:
@@ -137,7 +155,8 @@ class Game:
                 rl.append(evt)
             for _hint in _hints:
                 rl += ["", _hint]
-            rl += status_lines
+            # extra spacer so there's an additional blank line between event text and quest title
+            rl += [""] + status_lines
             win.render(rl[:inner_h])
 
         def _show_roster(page: int = 0) -> None:
