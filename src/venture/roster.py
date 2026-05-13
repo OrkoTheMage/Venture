@@ -59,10 +59,16 @@ def build_roster_lines(state: dict, page: int = 0, compact: bool = False) -> lis
     heroes = roster[start : start + _CARDS_PER_PAGE]
 
     if compact:
+        idx_w = len(str(len(roster)))  # width of largest roster index
         lines: list[str] = ["", f"Page {page + 1}/{total_pages}", ""]
         for i, h in enumerate(heroes):
             hp_pct = int(float(h.get("hp", 100)) / max(1.0, float(h.get("max_hp", 100))) * 100)
-            lines.append(f"  {start + i + 1}. \033[1m{h['name']}\033[0m  {h['class']}  Lvl {h['lvl']}  HP {hp_pct}%")
+            exp    = int(h.get("exp", 0))
+            name   = h["name"][:12]
+            lines.append(
+                f"  {start + i + 1:>{idx_w}}. \033[1m{name:<12}\033[0m"
+                f"  {h['class']:<8}  Lvl {h['lvl']}  HP {hp_pct:>3}%  {exp:>3} EXP"
+            )
         lines += ["", f"  Heroes: {len(roster)}/{ROSTER_CAP}"]
         return lines
 
@@ -201,10 +207,14 @@ def build_recruit_card_lines(offers: list[dict], compact: bool = False) -> list[
             if o.get("hired"):
                 price = "HIRED"
             elif o["price"] == 0:
-                price = "FREE"
+                price = " FREE"
             else:
-                price = f"{o['price']}G"
-            out.append(f"  {i + 1}. \033[1m{o['name']}\033[0m  {o['class']}  Lvl {o['lvl']}  HP {hp_pct}%  {price}")
+                price = f"{o['price']:>4}G"
+            name = o["name"][:12]
+            out.append(
+                f"  {i + 1}. \033[1m{name:<12}\033[0m"
+                f"  {o['class']:<8}  Lvl {o['lvl']}  HP {hp_pct:>3}%  {price}"
+            )
         return out
 
     cards = [_single_card_lines(h) for h in offers]

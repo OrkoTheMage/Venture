@@ -20,7 +20,8 @@ from .recruit import build_recruit_offers, hire_recruit
 from .graveyard import build_graveyard_lines, record_fallen
 from .questDefinitions import (
     QUEST_LORE,
-    QUEST_POOL,
+    LOCATION_QUESTS,
+    LOCATION_BOSSES,
     INITIAL_QUEST,
     BOSS_QUEST_FAMILY_BUSINESS,
     BOSS_QUEST_SINS_OF_THE_FATHER,
@@ -87,11 +88,21 @@ def _render_quest_card(tpl: str, q: dict) -> str:
             r = line.rfind("││")
             if r > l:
                 line = line[:l] + f"Enemy Types: {q['enemies']}".center(r - l) + line[r:]
+        elif "Region:" in line and "││" in line:
+            l = line.find("││") + 2
+            r = line.rfind("││")
+            if r > l:
+                line = line[:l] + f"Region: {q.get('location', '')}".center(r - l) + line[r:]
         out.append(line)
     return "\n".join(out)
 
 
 def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], list[str]]:
+    # Migrate: regenerate if cached quests pre-date the location system
+    if state.get("available_quests"):
+        if any(not q.get("location") for q in state["available_quests"]):
+            state.pop("available_quests")
+
     # Use persisted quests if already rolled; otherwise generate and save them
     if state.get("available_quests"):
         quests = state["available_quests"]
@@ -118,43 +129,64 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
         if not state.get("gather_allies_done"):
             quests = copy.deepcopy(INITIAL_QUEST)
         else:
-            picked = random.sample(QUEST_POOL, min(3, len(QUEST_POOL)))
-            danger_ranges = [
-                random.randint(1, 2),  # slot 1: easy
-                random.randint(2, 3),  # slot 2: mid
-                random.randint(4, 5),  # slot 3: hard
-            ]
+            all_locations = list(LOCATION_QUESTS.keys())
+            location_clears   = state.get("location_clears", {})
+            location_boss_done = state.get("location_boss_done", {})
+
+            # Maintain an ordered queue of locations whose boss is unlocked but not yet done.
+            # Locations are appended in the order they first hit 5 clears, so the player
+            # always encounters bosses in the sequence they earned them and can never be
+            # locked out of a boss by a different boss occupying slot 2.
+            boss_queue = list(state.get("location_boss_queue", []))
+            for loc in all_locations:
+                if (
+                    location_clears.get(loc, 0) >= 5
+                    and not location_boss_done.get(loc, False)
+                    and loc not in boss_queue
+                ):
+                    boss_queue.append(loc)
+            state["location_boss_queue"] = boss_queue
+
+            # Front of queue is the active boss for slot 2
+            boss_loc = boss_queue[0] if boss_queue else None
+
+            # Choose 3 locations: boss_loc guaranteed in slot 1, others random
+            if boss_loc:
+                others = random.sample([l for l in all_locations if l != boss_loc], 2)
+                chosen_locs = [others[0], boss_loc, others[1]]
+            else:
+                chosen_locs = random.sample(all_locations, 3)
+
+            # Danger ranges per slot
+            slot_ranges = [(1, 2), (2, 3), (4, 5)]
+
             quests = []
-            for i, q in enumerate(picked):
-                danger = danger_ranges[i]
-                enemies = q["enemies"]
-                if danger < 4 and "/" in enemies:
+            for i, loc in enumerate(chosen_locs):
+                # Slot 1 gets the location boss if eligible
+                if i == 1 and boss_loc and loc == boss_loc:
+                    quests.append(copy.deepcopy(LOCATION_BOSSES[loc]))
+                    continue
+                q_def = random.choice(LOCATION_QUESTS[loc])
+                min_d, max_d = slot_ranges[i]
+                danger = random.randint(min_d, max_d)
+                enemies = q_def["enemies"]
+                if "/" in enemies:
                     enemies = random.choice(enemies.split("/"))
                 quests.append({
-                    "name":    q["name"],
-                    "enemies": enemies,
-                    "danger":  danger,
-                    "length":  random.choice(["Short", "Medium", "Long"]),
+                    "name":     q_def["name"],
+                    "enemies":  enemies,
+                    "danger":   danger,
+                    "length":   random.choice(["Short", "Medium", "Long"]),
+                    "location": loc,
                 })
-            # Ensure at least one Short quest is present
+
+            # Ensure at least one Short quest
             if not any(q.get("length") == "Short" for q in quests):
                 quests[0]["length"] = "Short"
-            # Enforce slot danger ranges unless a slot is a boss or explicitly replaced
-            for idx, q in enumerate(quests):
-                if q.get("boss"):
-                    continue
-                if idx == 0:
-                    min_d, max_d = 1, 2
-                elif idx == 1:
-                    min_d, max_d = 2, 3
-                else:
-                    min_d, max_d = 4, 5
-                if int(q.get("danger", 1)) < min_d or int(q.get("danger", 1)) > max_d:
-                    q["danger"] = random.randint(min_d, max_d)
-            # Inject boss quest into slot 3 if eligible and not yet completed
-            roster = state.get("roster", [])
+
+            # Inject estate boss into slot 2 if eligible (overrides radiant quest)
+            roster   = state.get("roster", [])
             graveyard = state.get("graveyard", [])
-            # Persist these flags once True so dismissed heroes don't erase eligibility
             if not state.get("has_had_lvl3") and (
                 any(int(h.get("lvl", 1)) >= 3 for h in roster) or
                 any(int(e.get("lvl", 1)) >= 3 for e in graveyard)
@@ -165,20 +197,30 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
                 any(int(e.get("lvl", 1)) >= 5 for e in graveyard)
             ):
                 state["has_had_lvl5"] = True
-            has_had_lvl3 = state.get("has_had_lvl3", False)
-            has_had_lvl5 = state.get("has_had_lvl5", False)
-            if has_had_lvl3 and state.get("gather_allies_done") and not state.get("family_business_done"):
+            if state.get("has_had_lvl3") and not state.get("family_business_done"):
                 quests[2] = copy.deepcopy(BOSS_QUEST_FAMILY_BUSINESS)
-            elif has_had_lvl5 and state.get("family_business_done") and not state.get("sins_of_the_father_done"):
+            elif state.get("has_had_lvl5") and state.get("family_business_done") and not state.get("sins_of_the_father_done"):
                 quests[2] = copy.deepcopy(BOSS_QUEST_SINS_OF_THE_FATHER)
+
         state["available_quests"] = quests
         save_state(state)
 
     if compact:
-        lines = [
-            f"  {i}. \033[1m{q['name']}\033[0m  Danger {q['danger']}  {q['length']}  {q['enemies']}"
-            for i, q in enumerate(quests, start=1)
-        ]
+        lines = ["", "  Available Quests:", ""]
+        name_w    = max(len(q["name"])               for q in quests)
+        length_w  = max(len(q["length"])             for q in quests)
+        enemies_w = max(len(q["enemies"])            for q in quests)
+        loc_w     = max(len(q.get("location", ""))   for q in quests)
+        for i, q in enumerate(quests, start=1):
+            loc = q.get("location", "")
+            lines.append(
+                f"  {i}.  \033[1m{q['name']:<{name_w}}\033[0m"
+                f"  \u2502  Danger {q['danger']}"
+                f"  \u2502  {q['length']:<{length_w}}"
+                f"  \u2502  {q['enemies']:<{enemies_w}}"
+                + (f"  \u2502  {loc:<{loc_w}}" if loc else "")
+            )
+        lines.append("")
         return quests, lines
 
     try:
@@ -237,6 +279,24 @@ def _apply_scripted_rewards(s: dict) -> list[str]:
         s["items"] = items
         s["sins_of_the_father_done"] = True
         rewards.append("Found: Ancestral Skull")
+    # Location boss rewards
+    if s.get("quest_boss") and s.get("quest_location") in LOCATION_BOSSES:
+        boss_def = LOCATION_BOSSES[s["quest_location"]]
+        reward_item = boss_def.get("reward")
+        if reward_item:
+            items = s.get("items", [])
+            items.append(reward_item)
+            s["items"] = items
+            rewards.append(f"Found: {reward_item}")
+        loc = s["quest_location"]
+        lbd = s.get("location_boss_done", {})
+        lbd[loc] = True
+        s["location_boss_done"] = lbd
+        # Pop from queue so the next queued boss can take slot 2
+        boss_queue = s.get("location_boss_queue", [])
+        if loc in boss_queue:
+            boss_queue = [l for l in boss_queue if l != loc]
+            s["location_boss_queue"] = boss_queue
     return rewards
 
 
@@ -326,9 +386,17 @@ def apply_quest_damage() -> dict:
     except Exception:
         quest_end_time = time.time()
 
+    # Track location clears
+    quest_location = s.get("quest_location", "")
+    if quest_location:
+        lc = s.get("location_clears", {})
+        lc[quest_location] = lc.get(quest_location, 0) + 1
+        s["location_clears"] = lc
+
     for key in (
         "quest_start", "quest_id", "quest_name", "quest_danger",
         "quest_enemies", "quest_length", "quest_duration", "quest_party",
+        "quest_location", "quest_boss",
         "available_quests", "recruit_offers",
     ):
         s.pop(key, None)
@@ -382,5 +450,7 @@ def start_quest(state: dict, chosen: dict, party: list[dict]) -> None:
         "quest_length":   length,
         "quest_duration": dur,
         "quest_party":    [h["name"] for h in party],
+        "quest_location": chosen.get("location", ""),
+        "quest_boss":     bool(chosen.get("boss", False)),
     })
     save_state(state)

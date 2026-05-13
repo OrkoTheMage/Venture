@@ -11,7 +11,7 @@ import time
 from typing import TYPE_CHECKING
 
 from . import combat, roster as roster_mod, quest as quest_mod
-from .party import build_party_screen
+from .party import build_party_screen, compact_heroes_per_page
 from .state import load_state, save_state
 
 if TYPE_CHECKING:
@@ -42,7 +42,9 @@ def enter_roster_mode(game: Game) -> bool:
     while True:
         combat.apply_regen(game.state)
         try:
-            raw = game.win.prompt("roster> ").strip()
+            raw = game.win.prompt(
+                "roster> ", hint="Type a page number or command, or press 'ENTER' to return"
+            ).strip()
         except (EOFError, KeyboardInterrupt):
             raw = ""
         try:
@@ -248,15 +250,30 @@ def select_party(
     enemy_types: str = "",
     danger: int = 0,
     length: str = "Short",
+    location: str = "",
 ) -> list | None:
     MAX_PARTY = max_party
     current_roster = game.state.get("roster", [])
     selected: list[int] = []
+    hero_page = 0
+
+    def _per_page() -> int:
+        if not game.compact:
+            return len(current_roster)
+        return compact_heroes_per_page(quest_name, game.win.width, enemy_types, game.win.height)
+
+    def _total_pages() -> int:
+        import math
+        return max(1, math.ceil(len(current_roster) / _per_page()))
 
     def _draw() -> None:
         lines = build_party_screen(
             quest_name, current_roster, selected, MAX_PARTY,
-            game.win.width, enemy_types, danger, length, state=game.state,
+            game.win.width, enemy_types, danger, length,
+            state=game.state, compact=game.compact,
+            hero_page=hero_page,
+            win_height=game.win.height if game.compact else None,
+            location=location,
         )
         game.win.render(lines[:game.win.height])
 
@@ -280,7 +297,13 @@ def select_party(
                 print(f"You must select exactly {MAX_PARTY} heroes.")
                 continue
             return [current_roster[i] for i in selected]
-        if raw.isdigit():
+        if raw in ("n", "next") and game.compact:
+            if hero_page < _total_pages() - 1:
+                hero_page += 1
+        elif raw in ("p", "prev") and game.compact:
+            if hero_page > 0:
+                hero_page -= 1
+        elif raw.isdigit():
             idx = int(raw) - 1
             if 0 <= idx < len(current_roster):
                 if idx in selected:
@@ -289,6 +312,9 @@ def select_party(
                     selected.append(idx)
                 else:
                     print(f"Already have {MAX_PARTY} selected — deselect one first.")
+                # Jump to the page that contains the toggled hero
+                if game.compact:
+                    hero_page = idx // _per_page()
             else:
                 print(f"Invalid choice. Enter 1-{len(current_roster)}.")
         _draw()
@@ -325,11 +351,13 @@ def enter_quest_mode(game: Game) -> bool:
                         game, chosen["name"], max_party=n_heroes,
                         enemy_types=enemies, danger=danger,
                         length=chosen.get("length", "Short"),
+                        location=chosen.get("location", ""),
                     )
                 else:
                     party = select_party(
                         game, chosen["name"], enemy_types=enemies,
                         danger=danger, length=chosen.get("length", "Short"),
+                        location=chosen.get("location", ""),
                     )
                 if party is None:
                     game.win.render(card_lines[:game.win.height])

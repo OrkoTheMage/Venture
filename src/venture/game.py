@@ -38,26 +38,49 @@ class Game:
             rem = qi["remaining"]
             rem_str = quest_mod.format_duration(rem)
             pct = int(min(100, qi["elapsed"] / qi["duration"] * 100))
-            bw = max(10, min(30, self.win.width - 30))
-            bar = "[" + "#" * int(bw * pct / 100) + "-" * (bw - int(bw * pct / 100)) + "]"
             qname = self.state.get("quest_name")
             if qname:
-                try:
-                    danger = int(self.state.get("quest_danger", 0))
-                    length = self.state.get("quest_length", "")
-                    status += ["", f"\033[1m{qname}\033[0m (Danger: {danger} | Length: {length})"]
-                    status.append("")
-                    lore = quest_mod.QUEST_LORE.get(qname)
-                    if lore:
-                        for line in textwrap.wrap(lore, width=max(20, self.win.width - 6))[:3]:
-                            status.append(f"  {line}")
-                except Exception:
-                    pass
-                status += [
-                    "",
-                    f"\033[1mQuest Progress:\033[0m {bar} {pct}% ({rem_str})",
-                    "Leave and come back to see progress or press 'ENTER' to refresh.",
-                ]
+                if self.compact:
+                    bw = max(8, min(16, self.win.width - 50))
+                    bar = "[" + "#" * int(bw * pct / 100) + "-" * (bw - int(bw * pct / 100)) + "]"
+                    try:
+                        danger = int(self.state.get("quest_danger", 0))
+                        length = self.state.get("quest_length", "")
+                        status += [
+                            "",
+                            f"\033[1m{qname}\033[0m  (D:{danger} | {length})",
+                            "",
+                        ]
+                        lore = quest_mod.QUEST_LORE.get(qname)
+                        if lore:
+                            for line in textwrap.wrap(lore, width=max(20, self.win.width - 6)):
+                                status.append(f"  {line}")
+                        status += [
+                            "",
+                            f"\033[1mQuest Progress:\033[0m {bar} {pct}% ({rem_str})",
+                            "Press ENTER to refresh.",
+                        ]
+                    except Exception:
+                        status += ["", f"{qname}  {bar} {pct}% ({rem_str})", "Press ENTER to refresh."]
+                else:
+                    bw = max(10, min(30, self.win.width - 30))
+                    bar = "[" + "#" * int(bw * pct / 100) + "-" * (bw - int(bw * pct / 100)) + "]"
+                    try:
+                        danger = int(self.state.get("quest_danger", 0))
+                        length = self.state.get("quest_length", "")
+                        status += ["", f"\033[1m{qname}\033[0m (Danger: {danger} | Length: {length})"]
+                        status.append("")
+                        lore = quest_mod.QUEST_LORE.get(qname)
+                        if lore:
+                            for line in textwrap.wrap(lore, width=max(20, self.win.width - 6)):
+                                status.append(f"  {line}")
+                    except Exception:
+                        pass
+                    status += [
+                        "",
+                        f"\033[1mQuest Progress:\033[0m {bar} {pct}% ({rem_str})",
+                        "Leave and come back to see progress or press 'ENTER' to refresh.",
+                    ]
         elif qi.get("completed"):
             summary = quest_mod.apply_quest_damage()
             self.state = load_state()
@@ -111,49 +134,77 @@ class Game:
         gold = int(self.state.get("gold", 0))
         week = int(self.state.get("week", 0))
         stats_line = f"Coffers: {gold}G  |  Week: {week}"
-        stats_extra = 3 if (self.player_name and self.estate_name) else 0
-        greeting_lines = 2 if self.player_name else 0
+        has_identity = bool(self.player_name and self.estate_name)
+        has_player = bool(self.player_name)
+
         _hints: list[str] = []
-        if force_roster_hint or (self.player_name and not self.roster_seen):
+        if force_roster_hint or (has_player and not self.roster_seen):
             _hints.append('Type "roster" to view your roster.')
-        if self.player_name and self.state.get("gather_allies_done") and not self.state.get("recruit_hint_seen"):
+        if has_player and self.state.get("gather_allies_done") and not self.state.get("recruit_hint_seen"):
             _hints.append('Type "recruit" to see a list of recruitable party members')
         _has_lvl2_wiz = any(
             h.get("class") == "Wizard" and int(h.get("lvl", 1)) >= 2
             for h in self.state.get("roster", [])
         )
-        if self.player_name and _has_lvl2_wiz and not self.state.get("spells_hint_seen"):
+        if has_player and _has_lvl2_wiz and not self.state.get("spells_hint_seen"):
             _hints.append('Type "spells" to see a list of castable spells')
-        if self.player_name and self.state.get("graveyard") and not self.state.get("graveyard_hint_seen"):
+        if has_player and self.state.get("graveyard") and not self.state.get("graveyard_hint_seen"):
             _hints.append('Type "graveyard" to see a list of fallen heros')
         try:
             j_entries = journal_mod.get_journal_entries(self.state)
-            if self.player_name and any(e.get("done") for e in j_entries) and not self.state.get("journal_hint_seen"):
+            if has_player and any(e.get("done") for e in j_entries) and not self.state.get("journal_hint_seen"):
                 _hints.append('Type "journal" to see a list of goals for the estate.')
         except Exception:
             pass
-        hint_lines = len(_hints) * 2
-        avail_h = max(
-            0,
-            self.win.height - 1 - stats_extra - greeting_lines - hint_lines - len(status_lines),
-        )
-        display = [ln[:self.win.width] for ln in self.ascii_lines][:avail_h]
-        logo_width = max((len(ln.rstrip()) for ln in display), default=0)
-        if logo_width > len(stats_line):
-            stats_line = stats_line.center(logo_width)
-        stats_line = f"\033[1m{stats_line}\033[0m"
-        rl: list[str] = display + [""]
-        if self.player_name and self.estate_name:
-            rl.append(stats_line)
-            rl += ["", ""]
+
         gre, evt = self._make_greeting()
-        if gre:
-            rl.append(gre)
-        if evt:
-            rl.append(evt)
-        for _hint in _hints:
-            rl += ["", _hint]
-        rl += [""] + status_lines
+
+        if self.compact:
+            # Compact: no blank after ASCII, combined greeting+event, at most 1 hint
+            # Static lines (non-ASCII): stats? + greeting? + hint+blank? + blank+status
+            c_static = (
+                (1 if has_identity else 0)
+                + (1 if has_player else 0)
+                + (2 if _hints else 0)  # one hint = blank + hint text
+                + len(status_lines)
+            )
+            avail_h = max(0, self.win.height - 1 - c_static)
+            display = [ln[:self.win.width] for ln in self.ascii_lines][:avail_h]
+            logo_width = max((len(ln.rstrip()) for ln in display), default=0)
+            sl = stats_line.center(logo_width) if logo_width > len(stats_line) else stats_line
+            rl: list[str] = list(display)
+            if has_identity:
+                rl.append(f"\033[1m{sl}\033[0m")
+            if gre:
+                rl.append(f"{gre}  —  {evt}" if evt else gre)
+            for hint in _hints[:1]:
+                rl += ["", hint]
+            rl += [""] + status_lines
+        else:
+            # Regular: blank after ASCII, stats + 2 blanks, greeting + event, all hints
+            r_static = (
+                1  # blank line after ASCII
+                + (3 if has_identity else 0)  # stats + 2 blanks
+                + (2 if has_player else 0)    # greeting + event
+                + len(_hints) * 2             # blank + hint text per hint
+                + len(status_lines)
+            )
+            avail_h = max(0, self.win.height - 1 - r_static)
+            display = [ln[:self.win.width] for ln in self.ascii_lines][:avail_h]
+            logo_width = max((len(ln.rstrip()) for ln in display), default=0)
+            sl = stats_line.center(logo_width) if logo_width > len(stats_line) else stats_line
+            rl = display + [""]
+            if has_identity:
+                rl.append(f"\033[1m{sl}\033[0m")
+                rl += ["", ""]
+            if gre:
+                rl.append(gre)
+            if evt:
+                rl.append(evt)
+            for hint in _hints:
+                rl += ["", hint]
+            rl += [""] + status_lines
+
         self.win.render(rl[:self.win.height])
 
     # ── Entry point ─────────────────────────────────────────────────────── #
@@ -301,7 +352,7 @@ class Game:
             elif verb == "graveyard":
                 self.state["graveyard_hint_seen"] = True
                 save_state(self.state)
-                lines = quest_mod.build_graveyard_lines(self.state)
+                lines = quest_mod.build_graveyard_lines(self.state, compact=self.compact)
                 self.win.render(lines[:self.win.height])
                 try:
                     self.win.prompt("graveyard> ", hint="Press 'ENTER' to return").strip()
@@ -313,7 +364,7 @@ class Game:
             elif verb == "journal":
                 self.state["journal_hint_seen"] = True
                 save_state(self.state)
-                lines = journal_mod.build_journal_lines(self.state)
+                lines = journal_mod.build_journal_lines(self.state, compact=self.compact)
                 self.win.render(lines[:self.win.height])
                 try:
                     self.win.prompt("journal> ", hint="Press 'ENTER' to return").strip()

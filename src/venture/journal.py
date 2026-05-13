@@ -1,5 +1,7 @@
 """Journal — tracks player progress and goals."""
 
+from .questDefinitions import LOCATION_BOSSES
+
 
 def _any_hero_at_class_and_lvl(state: dict, hero_class: str, min_lvl: int) -> bool:
     """Return True if any hero in roster, graveyard, or dismissed list matches class and level."""
@@ -62,20 +64,41 @@ def get_journal_entries(state: dict) -> list[dict]:
             "label": "Acquire the Ancestral Skull",
             "done": "Ancestral Skull" in items,
         },
+    ] + [
+        {
+            "label": f"Acquire the {boss['reward']}",
+            "done": boss["reward"] in items,
+        }
+        for loc, boss in LOCATION_BOSSES.items()
+        if boss.get("reward")
     ]
 
 
-def build_journal_lines(state: dict) -> list[str]:
+def build_journal_lines(state: dict, compact: bool = False) -> list[str]:
     """Return display lines for the journal screen."""
     entries = get_journal_entries(state)
     done_count = sum(1 for e in entries if e["done"])
     total = len(entries)
 
-    lines: list[str] = [
+    if compact:
+        lines: list[str] = [
+            "",
+            f"  \033[1mJournal\033[0m  ({done_count}/{total} complete)",
+            "",
+        ]
+        for entry in entries:
+            box = "[x]" if entry["done"] else "[ ]"
+            lines.append(f"  {box}  {entry['label']}")
+        lines.append("")
+        return lines
+
+    # Regular: titled header with separator and progress line
+    lines = [
         "",
-        "  \033[1mJournal\033[0m",
+        "  \033[1mJournal — Estate Progress\033[0m",
+        "  " + "─" * 40,
         "",
-        f"  Progress: {done_count}/{total}",
+        f"  Progress: {done_count} / {total} goals complete",
         "",
     ]
     for entry in entries:
