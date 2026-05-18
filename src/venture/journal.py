@@ -87,7 +87,7 @@ def build_journal_lines(state: dict, compact: bool = False) -> list[str]:
             "",
         ]
         for entry in entries:
-            box = "[x]" if entry["done"] else "[ ]"
+            box = "[\033[32mx\033[0m]" if entry["done"] else "[ ]"
             lines.append(f"  {box}  {entry['label']}")
         lines.append("")
         return lines
@@ -102,7 +102,7 @@ def build_journal_lines(state: dict, compact: bool = False) -> list[str]:
         "",
     ]
     for entry in entries:
-        box = "[x]" if entry["done"] else "[ ]"
+        box = "[\033[32mx\033[0m]" if entry["done"] else "[ ]"
         lines.append(f"  {box}  {entry['label']}")
     lines.append("")
     return lines

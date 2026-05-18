@@ -127,7 +127,7 @@ def build_spell_card_lines(state: dict, compact: bool = False) -> list[str]:
         lines: list[str] = ["", "Wizard Spells:"]
         for i, sp in enumerate(spells, start=1):
             status = "(Ready)" if sp["can_cast"] else f"({sp['reason']})"
-            lines.append(f"  {i}. {sp['spell_label']}: {sp['desc']} {status}")
+            lines.append(f"  {i}. \033[1m{sp['spell_label']}\033[0m: {sp['desc']} {status}")
         lines.append("")
         return lines
 
@@ -143,7 +143,7 @@ def build_spell_card_lines(state: dict, compact: bool = False) -> list[str]:
         lines = ["", "Wizard Spells:"]
         for i, sp in enumerate(spells, start=1):
             status = "(Ready)" if sp["can_cast"] else f"({sp['reason']})"
-            lines.append(f"  {i}. {sp['spell_label']}: {sp['desc']} {status}")
+            lines.append(f"  {i}. \033[1m{sp['spell_label']}\033[0m: {sp['desc']} {status}")
         return lines
 
 

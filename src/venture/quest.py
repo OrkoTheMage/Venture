@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from .state import load_state, save_state
+from .events import apply_event_bonus, get_active_event, pick_next_event
 from .combat import (
     calc_damage, exp_to_level, max_hp_for,
     RESIST,
@@ -92,7 +93,7 @@ def _render_quest_card(tpl: str, q: dict) -> str:
             l = line.find("││") + 2
             r = line.rfind("││")
             if r > l:
-                line = line[:l] + f"Region: {q.get('location', '')}".center(r - l) + line[r:]
+                line = line[:l] + f"{q.get('location', '')}".center(r - l) + line[r:]
         out.append(line)
     return "\n".join(out)
 
@@ -107,7 +108,8 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
     if state.get("available_quests"):
         quests = state["available_quests"]
         changed = False
-        if not any(q.get("length") == "Short" for q in quests):
+        if not any(q.get("length") == "Short" for q in quests if not q.get("boss")):
+            # Force slot 1 Short (it is never a boss slot)
             quests[0]["length"] = "Short"
             changed = True
         for idx, q in enumerate(quests):
@@ -130,13 +132,10 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
             quests = copy.deepcopy(INITIAL_QUEST)
         else:
             all_locations = list(LOCATION_QUESTS.keys())
-            location_clears   = state.get("location_clears", {})
+            location_clears    = state.get("location_clears", {})
             location_boss_done = state.get("location_boss_done", {})
 
-            # Maintain an ordered queue of locations whose boss is unlocked but not yet done.
-            # Locations are appended in the order they first hit 5 clears, so the player
-            # always encounters bosses in the sequence they earned them and can never be
-            # locked out of a boss by a different boss occupying slot 2.
+            # ── Boss queue ───────────────────────────────────────────────── #
             boss_queue = list(state.get("location_boss_queue", []))
             for loc in all_locations:
                 if (
@@ -147,45 +146,12 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
                     boss_queue.append(loc)
             state["location_boss_queue"] = boss_queue
 
-            # Front of queue is the active boss for slot 2
-            boss_loc = boss_queue[0] if boss_queue else None
+            # ── Determine fixed boss slots ───────────────────────────────── #
+            # Slot 2 (index 1): location boss
+            slot2_quest = copy.deepcopy(LOCATION_BOSSES[boss_queue[0]]) if boss_queue else None
 
-            # Choose 3 locations: boss_loc guaranteed in slot 1, others random
-            if boss_loc:
-                others = random.sample([l for l in all_locations if l != boss_loc], 2)
-                chosen_locs = [others[0], boss_loc, others[1]]
-            else:
-                chosen_locs = random.sample(all_locations, 3)
-
-            # Danger ranges per slot
-            slot_ranges = [(1, 2), (2, 3), (4, 5)]
-
-            quests = []
-            for i, loc in enumerate(chosen_locs):
-                # Slot 1 gets the location boss if eligible
-                if i == 1 and boss_loc and loc == boss_loc:
-                    quests.append(copy.deepcopy(LOCATION_BOSSES[loc]))
-                    continue
-                q_def = random.choice(LOCATION_QUESTS[loc])
-                min_d, max_d = slot_ranges[i]
-                danger = random.randint(min_d, max_d)
-                enemies = q_def["enemies"]
-                if "/" in enemies:
-                    enemies = random.choice(enemies.split("/"))
-                quests.append({
-                    "name":     q_def["name"],
-                    "enemies":  enemies,
-                    "danger":   danger,
-                    "length":   random.choice(["Short", "Medium", "Long"]),
-                    "location": loc,
-                })
-
-            # Ensure at least one Short quest
-            if not any(q.get("length") == "Short" for q in quests):
-                quests[0]["length"] = "Short"
-
-            # Inject estate boss into slot 2 if eligible (overrides radiant quest)
-            roster   = state.get("roster", [])
+            # Slot 3 (index 2): estate milestone boss
+            roster    = state.get("roster", [])
             graveyard = state.get("graveyard", [])
             if not state.get("has_had_lvl3") and (
                 any(int(h.get("lvl", 1)) >= 3 for h in roster) or
@@ -197,10 +163,66 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
                 any(int(e.get("lvl", 1)) >= 5 for e in graveyard)
             ):
                 state["has_had_lvl5"] = True
+
+            slot3_quest = None
             if state.get("has_had_lvl3") and not state.get("family_business_done"):
-                quests[2] = copy.deepcopy(BOSS_QUEST_FAMILY_BUSINESS)
+                slot3_quest = copy.deepcopy(BOSS_QUEST_FAMILY_BUSINESS)
             elif state.get("has_had_lvl5") and state.get("family_business_done") and not state.get("sins_of_the_father_done"):
-                quests[2] = copy.deepcopy(BOSS_QUEST_SINS_OF_THE_FATHER)
+                slot3_quest = copy.deepcopy(BOSS_QUEST_SINS_OF_THE_FATHER)
+
+            # ── Choose locations for free slots ──────────────────────────── #
+            # Active event location must appear in at least one quest slot
+            week       = int(state.get("week", 0))
+            event_loc  = get_active_event(week, state)["location"]
+
+            # Locations already occupied by boss quests (estate bosses use
+            # "The Estate" which is not in LOCATION_QUESTS, so no conflict)
+            boss_locs = set()
+            if slot2_quest:
+                boss_locs.add(slot2_quest["location"])
+
+            free_count = 1 + (0 if slot2_quest else 1) + (0 if slot3_quest else 1)
+            available  = [l for l in all_locations if l not in boss_locs]
+
+            if not event_loc or event_loc in boss_locs:
+                # Town event (no location) or boss already covers it — pick freely
+                free_locs = random.sample(available, free_count)
+            else:
+                # Event location must fill one of the free slots
+                non_event = [l for l in available if l != event_loc]
+                others    = random.sample(non_event, free_count - 1)
+                free_locs = [event_loc] + others
+                random.shuffle(free_locs)
+
+            # ── Assemble quests ──────────────────────────────────────────── #
+            slot_ranges = [(1, 2), (2, 3), (4, 5)]
+            quests: list[dict] = []
+            free_idx = 0
+
+            for i in range(3):
+                if i == 1 and slot2_quest:
+                    quests.append(slot2_quest)
+                elif i == 2 and slot3_quest:
+                    quests.append(slot3_quest)
+                else:
+                    loc   = free_locs[free_idx]; free_idx += 1
+                    q_def = random.choice(LOCATION_QUESTS[loc])
+                    min_d, max_d = slot_ranges[i]
+                    danger  = random.randint(min_d, max_d)
+                    enemies = q_def["enemies"]
+                    if "/" in enemies:
+                        enemies = random.choice(enemies.split("/"))
+                    quests.append({
+                        "name":     q_def["name"],
+                        "enemies":  enemies,
+                        "danger":   danger,
+                        "length":   random.choice(["Short", "Medium", "Long"]),
+                        "location": loc,
+                    })
+
+            # Ensure at least one Short quest (boss slots are exempt)
+            if not any(q.get("length") == "Short" for q in quests if not q.get("boss")):
+                quests[0]["length"] = "Short"
 
         state["available_quests"] = quests
         save_state(state)
@@ -319,11 +341,48 @@ def apply_quest_damage() -> dict:
     fallen: list[str] = []
     mage_armor_map = s.get("mage_armor", {})
     now = time.time()
+
+    # Read The Bones: pre-determine one doomed hero and one spared hero
+    active_event = get_active_event(0, s)
+    bones_overrides: dict[str, float] = {}
+    if active_event.get("effect") == "bones":
+        _dl_ranges = {1: (0.01, 0.10), 2: (0.10, 0.20), 3: (0.20, 0.30), 4: (0.30, 0.40), 5: (0.40, 0.50)}
+        _hi = _dl_ranges.get(danger, (0.01, 0.10))[1]
+        party_names_for_bones = [
+            h for h in roster
+            if party_names is None or h["name"] in party_names
+        ]
+        if len(party_names_for_bones) >= 2:
+            doomed_hero, spared_hero = random.sample(party_names_for_bones, 2)
+            # Max damage = top of danger range with weakness modifiers, no nat-20 dodge
+            _types = [t.strip() for t in enemy_types.split("/")]
+            _cfg   = RESIST.get(doomed_hero.get("class", "Fighter"), {"resist": [], "weak": []})
+            _mod   = 1.0
+            for _t in _types:
+                if _t in _cfg["weak"]:
+                    _mod *= 1.50
+            bones_overrides[doomed_hero["name"]] = min(1.0, _hi * _mod)
+            bones_overrides[spared_hero["name"]] = 0.0
+        elif len(party_names_for_bones) == 1:
+            doomed_hero = party_names_for_bones[0]
+            _types = [t.strip() for t in enemy_types.split("/")]
+            _cfg   = RESIST.get(doomed_hero.get("class", "Fighter"), {"resist": [], "weak": []})
+            _mod   = 1.0
+            for _t in _types:
+                if _t in _cfg["weak"]:
+                    _mod *= 1.50
+            bones_overrides[doomed_hero["name"]] = min(1.0, _hi * _mod)
+    s["_bones_doomed"] = next((n for n, v in bones_overrides.items() if v == 1.0), None)
+    s["_bones_spared"] = next((n for n, v in bones_overrides.items() if v == 0.0), None)
+
     for h in roster:
         if party_names is not None and h["name"] not in party_names:
             continue
         has_mage_armor = mage_armor_map.get(h["name"], 0) > now
-        dmg = calc_damage(h.get("class", "Fighter"), enemy_types, danger, mage_armor=has_mage_armor)
+        dmg = bones_overrides.get(
+            h["name"],
+            calc_damage(h.get("class", "Fighter"), enemy_types, danger, mage_armor=has_mage_armor)
+        )
         max_hp = float(h.get("max_hp", 100))
         hp_lost = max_hp * dmg
         h["hp"] = max(0.0, float(h.get("hp", max_hp)) - hp_lost)
@@ -355,7 +414,7 @@ def apply_quest_damage() -> dict:
             healed_pct = int((target["hp"] - old_hp) / max_hp_val * 100)
             if healed_pct > 0:
                 target_desc = "themself" if target["name"] == cleric["name"] else target["name"]
-                cleric_rewards.append(f"{cleric['name']} blessed {target_desc}: +{healed_pct}% HP restored")
+                cleric_rewards.append(f"{cleric['name']} blessed {target_desc}: \033[32m+{healed_pct}% HP\033[0m restored")
 
     s["roster"] = [h for h in roster if h["name"] not in fallen]
 
@@ -371,7 +430,7 @@ def apply_quest_damage() -> dict:
     if total_rogue_pct > 0:
         bonus = int(quest_gold * total_rogue_pct)
         quest_gold += bonus
-        rewards_rogue = [f"Rogues swiped an extra {bonus}G ({int(total_rogue_pct * 100)}% bonus)"]
+        rewards_rogue = [f"Rogues swiped an extra \033[33m{bonus}G\033[0m ({int(total_rogue_pct * 100)}% bonus)"]
     else:
         rewards_rogue = []
 
@@ -379,7 +438,19 @@ def apply_quest_damage() -> dict:
     s["week"] = int(s.get("week", 0)) + 1
 
     rewards = _apply_scripted_rewards(s) + cleric_rewards + rewards_rogue
-    rewards.append(f"Party earned {quest_gold}G")
+    rewards.append(f"Party earned \033[33m{quest_gold}G\033[0m")
+
+    # ── Apply weekly event bonus (if quest location matches active event) ── #
+    s["_event_gold_base"] = quest_gold
+    s["_event_exp_base"]  = quest_exp
+    s["_event_fallen"]    = fallen
+    event_rewards = apply_event_bonus(s, s.get("quest_location", ""), s.get("quest_party"))
+    for key in ("_event_gold_base", "_event_exp_base", "_event_fallen", "_bones_doomed", "_bones_spared"):
+        s.pop(key, None)
+    rewards += event_rewards
+
+    # Advance to next event (never repeat last week's)
+    pick_next_event(s)
 
     try:
         quest_end_time = float(s.get("quest_start", time.time())) + float(s.get("quest_duration", 0))
@@ -400,6 +471,7 @@ def apply_quest_damage() -> dict:
         "available_quests", "recruit_offers",
     ):
         s.pop(key, None)
+
     s["last_regen"] = quest_end_time
     save_state(s)
     return {"damage_taken": damage_taken, "rewards": rewards, "fallen": fallen}
