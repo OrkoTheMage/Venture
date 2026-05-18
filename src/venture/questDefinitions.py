@@ -172,7 +172,6 @@ BOSS_QUEST_THIEVES_IN_THE_NIGHT = {
     "danger":   3,
     "length":   "Short",
     "enemies":  "Physical",
-    "boss":     True,
     "location": "The Estate",
 }
 

@@ -192,7 +192,7 @@ def handle_roster_command(verb: str, parts: list[str], state: dict) -> str | Non
     if verb in ("quit", "exit"):
         return "quit"
     if verb == "help":
-        print("Roster commands: rename [old name] [new name], dismiss [hero name], list, back, quit")
+        print("Roster commands: rename [old name] [new name], dismiss [hero name], move [name or #] [position], list, back, quit")
         print(f"Roster cap: {ROSTER_CAP} heroes maximum.")
         return None
     if verb == "list":
@@ -222,7 +222,42 @@ def handle_roster_command(verb: str, parts: list[str], state: dict) -> str | Non
 
         print(f"Hero '{old_name}' not found in roster.")
         return None
-    if verb == "dismiss":
+    if verb == "move":
+        if len(parts) < 3:
+            print("Usage: move [hero name or #] [position]")
+            return None
+        roster = state.get("roster") or []
+        # Last token is the target position
+        try:
+            target_pos = int(parts[-1])
+        except ValueError:
+            print("Position must be a number.")
+            return None
+        if not (1 <= target_pos <= len(roster)):
+            print(f"Position must be between 1 and {len(roster)}.")
+            return None
+        # Remaining tokens identify the hero (by index or name)
+        selector = " ".join(parts[1:-1])
+        hero_idx = None
+        if selector.isdigit():
+            n = int(selector)
+            if 1 <= n <= len(roster):
+                hero_idx = n - 1
+        if hero_idx is None:
+            for i, h in enumerate(roster):
+                if h.get("name", "").lower() == selector.lower():
+                    hero_idx = i
+                    break
+        if hero_idx is None:
+            print(f"Hero '{selector}' not found in roster.")
+            return None
+        hero = roster.pop(hero_idx)
+        roster.insert(target_pos - 1, hero)
+        state["roster"] = roster
+        save_state(state)
+        print(f"{hero['name']} moved to position {target_pos}.")
+        return "list"
+
         if len(parts) < 2:
             print("Usage: dismiss [hero name]")
             return None

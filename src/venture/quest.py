@@ -102,9 +102,17 @@ def _render_quest_card(tpl: str, q: dict) -> str:
 
 
 def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], list[str]]:
-    # Migrate: regenerate if cached quests pre-date the location system
+    # Migrate: regenerate if cached quests pre-date the location system or event_quest flags
     if state.get("available_quests"):
         if any(not q.get("location") for q in state["available_quests"]):
+            state.pop("available_quests")
+    if state.get("available_quests"):
+        active_event_loc = get_active_event(int(state.get("week", 0)), state).get("location")
+        needs_regen = active_event_loc and not any(
+            q.get("event_quest") for q in state["available_quests"]
+            if q.get("location") == active_event_loc
+        )
+        if needs_regen:
             state.pop("available_quests")
 
     # Use persisted quests if already rolled; otherwise generate and save them
@@ -154,6 +162,8 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
 
             # Slot 1 (index 0): Thieves in the Night event quest
             slot1_quest = copy.deepcopy(BOSS_QUEST_THIEVES_IN_THE_NIGHT) if get_active_event(week, state).get("effect") == "thieves" else None
+            if slot1_quest:
+                slot1_quest["event_quest"] = True
 
             # Slot 2 (index 1): location boss
             slot2_quest = copy.deepcopy(LOCATION_BOSSES[boss_queue[0]]) if boss_queue else None
@@ -234,19 +244,37 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
             if not any(q.get("length") == "Short" for q in quests if not q.get("boss")):
                 quests[0]["length"] = "Short"
 
+            # Flag quests at the active event's location
+            if event_loc:
+                for q in quests:
+                    if q.get("location") == event_loc:
+                        q["event_quest"] = True
+
         state["available_quests"] = quests
         save_state(state)
 
     if compact:
         lines = ["", "  Available Quests:", ""]
-        name_w    = max(len(q["name"])               for q in quests)
-        length_w  = max(len(q["length"])             for q in quests)
-        enemies_w = max(len(q["enemies"])            for q in quests)
-        loc_w     = max(len(q.get("location", ""))   for q in quests)
+        def _tag_str(q: dict) -> str:
+            parts = []
+            if q.get("event_quest"):  parts.append("\033[32m[Event]\033[0m")
+            if q.get("boss"):         parts.append("\033[31m[Boss]\033[0m")
+            return (" ".join(parts) + " ") if parts else ""
+        def _tag_w(q: dict) -> int:
+            w = 0
+            if q.get("event_quest"):  w += len("[Event] ")
+            if q.get("boss"):         w += len("[Boss] ")
+            return w
+        name_w    = max(len(q["name"]) + _tag_w(q)            for q in quests)
+        length_w  = max(len(q["length"])                      for q in quests)
+        enemies_w = max(len(q["enemies"])                     for q in quests)
+        loc_w     = max(len(q.get("location", ""))            for q in quests)
         for i, q in enumerate(quests, start=1):
-            loc = q.get("location", "")
+            loc       = q.get("location", "")
+            event_tag = _tag_str(q)
+            name_pad  = name_w - _tag_w(q)
             lines.append(
-                f"  {i}.  \033[1m{q['name']:<{name_w}}\033[0m"
+                f"  {i}.  {event_tag}\033[1m{q['name']:<{name_pad}}\033[0m"
                 f"  \u2502  Danger {q['danger']}"
                 f"  \u2502  {q['length']:<{length_w}}"
                 f"  \u2502  {q['enemies']:<{enemies_w}}"
@@ -259,10 +287,12 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
         tpl = _CARD_TPL.read_text()
         cards_text = ""
         for i, q in enumerate(quests, start=1):
-            cards_text += f" {i}.\n" + _render_quest_card(tpl, q) + "\n\n"
+            event_tag = "\033[32m[Event]\033[0m " if q.get("event_quest") else ""
+            cards_text += f" {i}. {event_tag}\n" + _render_quest_card(tpl, q) + "\n\n"
         return quests, cards_text.splitlines()
     except Exception:
         fallback = [
+            ("\033[32m[Event]\033[0m " if q.get("event_quest") else "") +
             f"{i}. {q['name']} - Danger {q['danger']} - {q['length']} - {q['enemies']}"
             for i, q in enumerate(quests, start=1)
         ]
