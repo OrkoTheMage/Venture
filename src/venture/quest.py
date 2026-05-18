@@ -21,11 +21,14 @@ from .recruit import build_recruit_offers, hire_recruit
 from .graveyard import build_graveyard_lines, record_fallen
 from .questDefinitions import (
     QUEST_LORE,
+    render_lore,
+    lore_line_count,
     LOCATION_QUESTS,
     LOCATION_BOSSES,
     INITIAL_QUEST,
     BOSS_QUEST_FAMILY_BUSINESS,
     BOSS_QUEST_SINS_OF_THE_FATHER,
+    BOSS_QUEST_THIEVES_IN_THE_NIGHT,
 )
 
 # ── EXP constants ─────────────────────────────────────────────────────────── #
@@ -147,6 +150,11 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
             state["location_boss_queue"] = boss_queue
 
             # ── Determine fixed boss slots ───────────────────────────────── #
+            week       = int(state.get("week", 0))
+
+            # Slot 1 (index 0): Thieves in the Night event quest
+            slot1_quest = copy.deepcopy(BOSS_QUEST_THIEVES_IN_THE_NIGHT) if get_active_event(week, state).get("effect") == "thieves" else None
+
             # Slot 2 (index 1): location boss
             slot2_quest = copy.deepcopy(LOCATION_BOSSES[boss_queue[0]]) if boss_queue else None
 
@@ -181,12 +189,12 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
             if slot2_quest:
                 boss_locs.add(slot2_quest["location"])
 
-            free_count = 1 + (0 if slot2_quest else 1) + (0 if slot3_quest else 1)
+            free_count = (0 if slot1_quest else 1) + (0 if slot2_quest else 1) + (0 if slot3_quest else 1)
             available  = [l for l in all_locations if l not in boss_locs]
 
-            if not event_loc or event_loc in boss_locs:
-                # Town event (no location) or boss already covers it — pick freely
-                free_locs = random.sample(available, free_count)
+            if not event_loc or event_loc in boss_locs or free_count == 0:
+                # Town event (no location), boss already covers it, or all slots filled
+                free_locs = random.sample(available, free_count) if free_count > 0 else []
             else:
                 # Event location must fill one of the free slots
                 non_event = [l for l in available if l != event_loc]
@@ -200,7 +208,9 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
             free_idx = 0
 
             for i in range(3):
-                if i == 1 and slot2_quest:
+                if i == 0 and slot1_quest:
+                    quests.append(slot1_quest)
+                elif i == 1 and slot2_quest:
                     quests.append(slot2_quest)
                 elif i == 2 and slot3_quest:
                     quests.append(slot3_quest)
@@ -287,20 +297,20 @@ def _apply_scripted_rewards(s: dict) -> list[str]:
         for hero in new_heroes:
             if hero["name"].lower() not in existing:
                 s["roster"].append(hero)
-                rewards.append(f"{hero['name']} the {hero['class']} joins your roster")
+                rewards.append(f"\033[35m[Recruit]\033[0m {hero['name']} the {hero['class']} joins your roster")
         s["gather_allies_done"] = True
     if s.get("quest_name") == "The Family Business":
         items = s.get("items", [])
         items.append("Signet Ring")
         s["items"] = items
         s["family_business_done"] = True
-        rewards.append("Found: Signet Ring")
+        rewards.append("\033[35m[Relic]\033[0m Found: Signet Ring")
     if s.get("quest_name") == "Sins of the Father":
         items = s.get("items", [])
         items.append("Ancestral Skull")
         s["items"] = items
         s["sins_of_the_father_done"] = True
-        rewards.append("Found: Ancestral Skull")
+        rewards.append("\033[35m[Relic]\033[0m Found: Ancestral Skull")
     # Location boss rewards
     if s.get("quest_boss") and s.get("quest_location") in LOCATION_BOSSES:
         boss_def = LOCATION_BOSSES[s["quest_location"]]
@@ -309,7 +319,7 @@ def _apply_scripted_rewards(s: dict) -> list[str]:
             items = s.get("items", [])
             items.append(reward_item)
             s["items"] = items
-            rewards.append(f"Found: {reward_item}")
+            rewards.append(f"\033[35m[Relic]\033[0m Found: {reward_item}")
         loc = s["quest_location"]
         lbd = s.get("location_boss_done", {})
         lbd[loc] = True
@@ -363,6 +373,8 @@ def apply_quest_damage() -> dict:
                     _mod *= 1.50
             bones_overrides[doomed_hero["name"]] = min(1.0, _hi * _mod)
             bones_overrides[spared_hero["name"]] = 0.0
+            s["_bones_doomed"] = doomed_hero["name"]
+            s["_bones_spared"] = spared_hero["name"]
         elif len(party_names_for_bones) == 1:
             doomed_hero = party_names_for_bones[0]
             _types = [t.strip() for t in enemy_types.split("/")]
@@ -372,8 +384,8 @@ def apply_quest_damage() -> dict:
                 if _t in _cfg["weak"]:
                     _mod *= 1.50
             bones_overrides[doomed_hero["name"]] = min(1.0, _hi * _mod)
-    s["_bones_doomed"] = next((n for n, v in bones_overrides.items() if v == 1.0), None)
-    s["_bones_spared"] = next((n for n, v in bones_overrides.items() if v == 0.0), None)
+            s["_bones_doomed"] = doomed_hero["name"]
+            s["_bones_spared"] = None
 
     for h in roster:
         if party_names is not None and h["name"] not in party_names:
@@ -391,10 +403,13 @@ def apply_quest_damage() -> dict:
             damage_taken.append((h["name"], int(dmg * 100), 0, None))
         else:
             old_lvl = int(h.get("lvl", 1))
-            _award_exp(h, quest_exp)
-            new_lvl = int(h.get("lvl", 1))
-            leveled_to = new_lvl if new_lvl != old_lvl else None
-            damage_taken.append((h["name"], int(dmg * 100), quest_exp, leveled_to))
+            if old_lvl >= 5:
+                damage_taken.append((h["name"], int(dmg * 100), 0, None))
+            else:
+                _award_exp(h, quest_exp)
+                new_lvl = int(h.get("lvl", 1))
+                leveled_to = new_lvl if new_lvl != old_lvl else None
+                damage_taken.append((h["name"], int(dmg * 100), quest_exp, leveled_to))
 
     # Cleric: heal a random living party hero after combat
     living_party = [
@@ -449,6 +464,17 @@ def apply_quest_damage() -> dict:
     for key in ("_event_gold_base", "_event_exp_base", "_event_fallen", "_event_full_roster", "_bones_doomed", "_bones_spared"):
         s.pop(key, None)
     rewards += event_rewards
+
+    # ── Thieves in the Night: penalty if the quest was not completed ───────── #
+    _active_event = get_active_event(0, s)
+    if _active_event.get("effect") == "thieves" and s.get("quest_name") != "Thieves in the Night":
+        coffers = int(s.get("gold", 0))
+        penalty = int(coffers * 0.5)
+        s["gold"] = max(0, coffers - penalty)
+        rewards.append(
+            f"\033[31m[Thieves in the Night]\033[0m The thieves dissolved before the morning light"
+            f" — \033[33m{penalty}G\033[0m was stolen"
+        )
 
     # Advance to next event (never repeat last week's)
     pick_next_event(s)

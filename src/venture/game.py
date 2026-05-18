@@ -57,7 +57,7 @@ class Game:
                         ]
                         lore = quest_mod.QUEST_LORE.get(qname)
                         if lore:
-                            for line in textwrap.wrap(lore, width=max(20, self.win.width - 6)):
+                            for line in quest_mod.render_lore(lore, width=max(20, self.win.width - 6), indent=""):
                                 status.append(f"  {line}")
                         status += [
                             "",
@@ -78,7 +78,7 @@ class Game:
                         status.append("")
                         lore = quest_mod.QUEST_LORE.get(qname)
                         if lore:
-                            for line in textwrap.wrap(lore, width=max(20, self.win.width - 6)):
+                            for line in quest_mod.render_lore(lore, width=max(20, self.win.width - 6), indent=""):
                                 status.append(f"  {line}")
                     except Exception:
                         pass

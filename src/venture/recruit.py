@@ -13,7 +13,7 @@ _RECRUIT_NAMES = [
     "Idris", "Joryn", "Keld", "Lyra", "Maren", "Noel", "Orin",
 ]
 
-_RECRUIT_LEVEL_EXP = {1: 0, 2: 100, 3: 200}
+_RECRUIT_LEVEL_EXP = {1: 0, 2: 100, 3: 200, 4: 400, 5: 800}
 
 
 def build_recruit_offers(state: dict) -> list[dict]:
@@ -80,7 +80,7 @@ def build_recruit_offers(state: dict) -> list[dict]:
             hp   = float(max_hp_for(cls, 5))
             offers.append({
                 "name": name, "class": cls, "lvl": 5,
-                "price": 0, "hp": hp, "max_hp": hp,
+                "price": 0, "hp": hp, "max_hp": hp, "exp": 800,
                 "hired": False, "banner_man": True,
             })
             state["recruit_offers"] = offers

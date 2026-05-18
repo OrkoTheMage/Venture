@@ -8,7 +8,7 @@ import textwrap
 from .classBonuses import FIGHTER_TIME_REDUCTION
 from .combat import RESIST
 from .quest import _LENGTH_SECONDS, format_duration
-from .questDefinitions import QUEST_LORE
+from .questDefinitions import QUEST_LORE, render_lore, lore_line_count
 
 
 def compact_info_height(quest_name: str, width: int, enemy_types: str) -> int:
@@ -20,7 +20,7 @@ def compact_info_height(quest_name: str, width: int, enemy_types: str) -> int:
         n += 2  # enemies/duration line + blank
     lore = QUEST_LORE.get(quest_name, "")
     if lore:
-        n += len(textwrap.wrap(lore, width=max(20, width - 4))) + 1  # lore lines + blank
+        n += lore_line_count(lore, width=max(20, width - 4)) + 1  # lore lines + blank
     return n
 
 
@@ -112,7 +112,7 @@ def build_party_screen(
             info.append("")
         lore = QUEST_LORE.get(quest_name)
         if lore:
-            for wrapped_line in textwrap.wrap(lore, width=max(20, width - 4)):
+            for wrapped_line in render_lore(lore, width=max(20, width - 4), indent=""):
                 info.append(f"  {wrapped_line}")
             info.append("")
 
@@ -160,7 +160,7 @@ def build_party_screen(
 
     lore = QUEST_LORE.get(quest_name)
     if lore:
-        for wrapped_line in textwrap.wrap(lore, width=max(20, width - 2)):
+        for wrapped_line in render_lore(lore, width=max(20, width - 2), indent=""):
             lines.append(f"  {wrapped_line}")
         lines.append("")
 

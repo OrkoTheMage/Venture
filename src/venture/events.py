@@ -36,7 +36,7 @@ EVENTS: list[dict] = [
         "location": "The Moors",
         "effect":   "exp",
         "lore": (
-            "A strange mist has settled over the moors — not the killing kind, but the kind that sharpens the mind and makes plain what was murk. "
+            "A strange mist has settled over the moors — the kind that sharpens the mind and makes plain what was murk. "
             "Those who walk through it return older behind the eyes, carrying wisdom that came more swiftly than it ought."
         ),
         "effect_desc": "Earn 100% more EXP on quest completion in The Moors",
@@ -62,8 +62,8 @@ TOWN_EVENTS: list[dict] = [
         "effect":     "respite",
         "town_event": True,
         "lore": (
-            "A rare stillness has settled over the estate — not the quiet of dread, but the fragile quiet of good fortune and open hands. "
-            "Whatever quest your party undertakes this week, they return with wounds and purses both somewhat less punished for it."
+            "A rare stillness has settled over the estate — the fragile quiet of good fortune and open hands. "
+            "Wounds will be mended, and the coins in the coffers will stack up nicely. Rest easy, this week brings good tidings."
         ),
         "effect_desc": "After any quest: +10% HP, +50% gold and EXP",
     },
@@ -85,24 +85,38 @@ TOWN_EVENTS: list[dict] = [
         "town_event": True,
         "lore": (
             "A covered carriage rolled in before midnight, its driver hooded and unhurried. "
-            "Those within are available this week at prices that will not hold — one rides free, one rides cheap."
+            "Those within are available this week at prices that will not hold. Bolster the ranks — few are so willing to throw their lives into this chaos."
         ),
         "effect_desc": "Recruit slot 2 is free, slot 3 is 50% off",
     },
+
     {
-        "name":       "The Returned Banner-Man",
+        "name":       "Thieves in the Night",
         "location":   None,
-        "effect":     "banner_man",
+        "effect":     "thieves",
         "town_event": True,
         "lore": (
-            "An old soldier arrived at the estate gate before sunrise, bearing a standard you almost didn't recognise — your family's colours, faded and battle-worn. "
-            "He asks no coin, only purpose, and he is plainly capable of far more than most your gold could buy."
+            "Before the first candle was lit, a ring of cutpurses worked their way through the estate "
+            "— drawers forced, locks picked, and storeroom supplies left bare. "
+            "They are still close. The trail is still warm. "
+            "Leave them to it, and they'll make with your hard-earned fortunes."
         ),
-        "effect_desc": "A 4th recruit appears this week — level 5 and free",
+        "effect_desc": "A boss quest appears in slot 1 — clear it for +50% gold, ignore it and lose 50%",
     },
 ]
 
 RARE_EVENTS: list[dict] = [
+    {
+        "name":       "An Old Ally",
+        "location":   None,
+        "effect":     "banner_man",
+        "rare_event": True,
+        "lore": (
+            "An old soldier arrived at the estate gate before sunrise, bearing a standard you almost didn't recognise — your family's colours, faded and battle-worn. "
+            "They ask for no coin, only purpose, and they are clearly capable of far more than most your gold could buy."
+        ),
+        "effect_desc": "A 4th recruit appears this week — level 5 and free",
+    },
     {
         "name":       "Returned From The Styx",
         "location":   None,
@@ -131,8 +145,10 @@ RARE_EVENTS: list[dict] = [
         "effect":     "bell_tolls",
         "rare_event": True,
         "lore": (
-            "The bell in the estate tower rang once at midnight — unprompted, unmanned, its tone carrying further than it ought. "
-            "By morning, every wound on the grounds had quietly sealed itself, as though the bell had decided enough had been paid."
+            "The bell in the estate tower rang out once at the black hour — no hand pulled the rope, no wind stirred the air. "
+            "In the old reckoning, such a toll was not for any one soul. It rang for all. "
+            "The weight of suffering, parcelled quietly across every living body on the grounds. "
+            "By morning the wounds had closed. What it cost, and who paid it, the bell does not say."
         ),
         "effect_desc": "Every hero in the roster is healed to full",
     },
@@ -280,6 +296,18 @@ def apply_event_bonus(state: dict, quest_location: str, party_names: list[str] |
             f"\033[32m[{event['name']}]\033[0m Party healed \033[32m10% HP\033[0m,"
             f" earned \033[33m{bonus_gold}G\033[0m and \033[36m{bonus_exp} EXP\033[0m"
         )
+
+    # ── Thieves in the Night: reward if the spawned quest was completed ────── #
+    elif effect == "thieves":
+        if state.get("quest_name") == "Thieves in the Night":
+            coffers = int(state.get("gold", 0))
+            bonus = int(coffers * 0.5)
+            if bonus > 0:
+                state["gold"] = coffers + bonus
+                rewards.append(
+                    f"\033[32m[{event['name']}]\033[0m The thieves were remanded —"
+                    f" \033[33m+{bonus}G\033[0m seized from them"
+                )
 
     # ── Read The Bones: reward line only (damage handled in apply_quest_damage) #
     elif effect == "bones":

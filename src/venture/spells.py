@@ -22,17 +22,17 @@ def _render_spell_card(tpl: str, sp: dict) -> str:
             l = line.find("││") + 2
             r = line.rfind("││")
             if r > l:
-                line = line[:l] + f"Target: {sp['target']}".ljust(r - l) + line[r:]
+                line = line[:l] + f"Target: {sp['target']}".center(r - l) + line[r:]
         elif "Effect: Resist All Types" in line and "││" in line:
             l = line.find("││") + 2
             r = line.rfind("││")
             if r > l:
-                line = line[:l] + sp["desc"][: r - l].ljust(r - l) + line[r:]
+                line = line[:l] + sp["desc"][: r - l].center(r - l) + line[r:]
         elif "Duration: One Day" in line and "││" in line:
             l = line.find("││") + 2
             r = line.rfind("││")
             if r > l:
-                line = line[:l] + sp["duration"][: r - l].ljust(r - l) + line[r:]
+                line = line[:l] + sp["duration"][: r - l].center(r - l) + line[r:]
         out.append(line)
     return "\n".join(out)
 
@@ -59,8 +59,8 @@ def get_wizard_spells(state: dict) -> list[dict]:
                 "wizard":      name,
                 "spell":       "mage_armor",
                 "spell_label": "Mage Armor",
-                "desc":        "Resist all damage for 3 quests",
-                "target":      "Other",
+                "desc":        "Resist all damage types, 3 weeks",
+                "target":      "Any",
                 "duration":    "1h cooldown",
                 "can_cast":    armor_ready,
                 "reason":      "On cooldown" if not armor_ready else "",

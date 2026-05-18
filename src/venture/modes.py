@@ -152,7 +152,7 @@ def enter_spell_mode(game: Game) -> bool:
 
         # ── pick target (if needed) ───────────────────────────────── #
         target_name = None
-        if chosen_spell["target"] == "Other":
+        if chosen_spell["target"] in ("Other", "Any"):
             roster = game.state.get("roster", [])
             mage_armor_map = game.state.get("mage_armor", {})
             if chosen_spell["spell"] == "mage_armor":
