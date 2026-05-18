@@ -43,7 +43,7 @@ def enter_roster_mode(game: Game) -> bool:
         combat.apply_regen(game.state)
         try:
             raw = game.win.prompt(
-                "roster> ", hint="Type a page number or command, or press 'ENTER' to return"
+                "roster> ", hint="Type a page number or 'help' for more commands, or press 'ENTER' to return"
             ).strip()
         except (EOFError, KeyboardInterrupt):
             raw = ""

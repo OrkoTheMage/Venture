@@ -192,11 +192,11 @@ def handle_roster_command(verb: str, parts: list[str], state: dict) -> str | Non
     if verb in ("quit", "exit"):
         return "quit"
     if verb == "help":
-        print("Roster commands: rename [old name] [new name], dismiss [hero name], move [name or #] [position], list, back, quit")
-        print(f"Roster cap: {ROSTER_CAP} heroes maximum.")
+        print("\033[1mRename Command:\033[0m rename [old name] [new name]")
+        print("\033[1mDismiss Command:\033[0m dismiss [hero name]")
+        print("\033[1mMove Command:\033[0m move [name or #] [position]")
+        print(f"\033[1mRoster cap:\033[0m {ROSTER_CAP} heroes maximum.")
         return None
-    if verb == "list":
-        return "list"
     if verb == "rename":
         if len(parts) < 3:
             print("Usage: rename [hero name] [new name]")
