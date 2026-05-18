@@ -155,9 +155,8 @@ def enter_spell_mode(game: Game) -> bool:
         if chosen_spell["target"] == "Other":
             roster = game.state.get("roster", [])
             mage_armor_map = game.state.get("mage_armor", {})
-            now = time.time()
             if chosen_spell["spell"] == "mage_armor":
-                targets = [h for h in roster if mage_armor_map.get(h["name"], 0) <= now]
+                targets = [h for h in roster if mage_armor_map.get(h["name"], 0) <= 0]
             elif chosen_spell["spell"] == "inspire":
                 from .combat import exp_to_level as _etl  # noqa: F401
                 MAX_LVL = 5

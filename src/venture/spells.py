@@ -1,4 +1,3 @@
-import datetime
 import random
 import time
 from pathlib import Path
@@ -43,7 +42,6 @@ def get_wizard_spells(state: dict) -> list[dict]:
 
     Each entry: {wizard, spell, desc, can_cast, reason}
     """
-    today = datetime.date.today().isoformat()
     cast_log = state.get("spell_cast_log", {})
     spells: list[dict] = []
 
@@ -61,9 +59,9 @@ def get_wizard_spells(state: dict) -> list[dict]:
                 "wizard":      name,
                 "spell":       "mage_armor",
                 "spell_label": "Mage Armor",
-                "desc":        "Resist all damage types for 24h",
+                "desc":        "Resist all damage for 3 quests",
                 "target":      "Other",
-                "duration":    "24h cooldown",
+                "duration":    "1h cooldown",
                 "can_cast":    armor_ready,
                 "reason":      "On cooldown" if not armor_ready else "",
             })
@@ -77,13 +75,28 @@ def get_wizard_spells(state: dict) -> list[dict]:
                 "spell_label": "Alchemize",
                 "desc":        "50% chance: 100G becomes 200G or 0G",
                 "target":      "Self",
-                "duration":    "24h cooldown",
+                "duration":    "1h cooldown",
                 "can_cast":    alchemize_ready,
                 "reason":      "On cooldown" if not alchemize_ready else "",
             })
 
+        if lvl >= 4:
+            portal_expiry = hero_log.get("portal_until", 0)
+            portal_ready = time.time() >= portal_expiry
+            spells.append({
+                "wizard":      name,
+                "spell":       "portal",
+                "spell_label": "Portal",
+                "desc":        "Your next quest finishes instantly",
+                "target":      "Self",
+                "duration":    "12h cooldown",
+                "can_cast":    portal_ready,
+                "reason":      "On cooldown" if not portal_ready else "",
+            })
+
         if lvl >= 5:
-            already = hero_log.get("inspire") == today
+            inspire_expiry = hero_log.get("inspire_until", 0)
+            inspire_ready = time.time() >= inspire_expiry
             spells.append({
                 "wizard":      name,
                 "spell":       "inspire",
@@ -91,8 +104,8 @@ def get_wizard_spells(state: dict) -> list[dict]:
                 "desc":        "Give 300 EXP to a chosen hero",
                 "target":      "Other",
                 "duration":    "24h cooldown",
-                "can_cast":    not already,
-                "reason":      "On cooldown" if already else "",
+                "can_cast":    inspire_ready,
+                "reason":      "On cooldown" if not inspire_ready else "",
             })
 
     return spells
@@ -151,8 +164,6 @@ def cast_wizard_spell(
     state: dict, wizard_name: str, spell: str, target_hero: str | None = None
 ) -> tuple[bool, str]:
     """Cast a wizard spell. Returns (success, message)."""
-    today = datetime.date.today().isoformat()
-
     roster = state.get("roster", [])
     wizard = next((h for h in roster if h["name"] == wizard_name), None)
     if wizard is None:
@@ -171,7 +182,7 @@ def cast_wizard_spell(
         if gold < 100:
             return False, f"Not enough gold. Need 100G, have {gold}G."
         state["gold"] = gold - 100
-        expiry = time.time() + 86400
+        expiry = time.time() + 3600
         hero_log["alchemize_until"] = expiry
         save_state(state)
         if random.random() < 0.5:
@@ -192,18 +203,27 @@ def cast_wizard_spell(
         )
         if target is None:
             return False, f"Hero '{target_hero}' not found."
-        expiry = time.time() + 86400
-        state.setdefault("mage_armor", {})[target["name"]] = expiry
-        hero_log["mage_armor_until"] = expiry
+        state.setdefault("mage_armor", {})[target["name"]] = 3
+        hero_log["mage_armor_until"] = time.time() + 3600
         state["roster"] = roster
         save_state(state)
-        return True, f"{target['name']} is protected by Mage Armor for 24 hours."
+        return True, f"{target['name']} is protected by Mage Armor for 3 quests."
+
+    if spell == "portal":
+        if hero_log.get("portal_until", 0) > time.time():
+            return False, "Portal is still on cooldown."
+        if state.get("portal_active"):
+            return False, "A portal has already been opened this week."
+        state["portal_active"] = True
+        hero_log["portal_until"] = time.time() + 43200
+        save_state(state)
+        return True, "A portal opens — your party's quest finishes instantly!"
 
     if spell == "inspire":
         if lvl < 5:
             return False, f"{wizard_name} needs level 5 to cast Inspire."
-        if hero_log.get("inspire") == today:
-            return False, "Inspire already cast today."
+        if hero_log.get("inspire_until", 0) > time.time():
+            return False, "Inspire is still on cooldown."
         if target_hero is None:
             return False, "Inspire requires a target hero."
         target = next(
@@ -221,7 +241,7 @@ def cast_wizard_spell(
             if old_max > 0:
                 target["hp"] = min(new_max, float(target.get("hp", old_max)) / old_max * new_max)
             target["max_hp"] = new_max
-        hero_log["inspire"] = today
+        hero_log["inspire_until"] = time.time() + 86400
         state["roster"] = roster
         save_state(state)
         level_msg = f" (leveled up to {new_lvl}!)" if new_lvl != old_lvl else ""

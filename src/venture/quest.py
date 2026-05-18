@@ -441,11 +441,12 @@ def apply_quest_damage() -> dict:
     rewards.append(f"Party earned \033[33m{quest_gold}G\033[0m")
 
     # ── Apply weekly event bonus (if quest location matches active event) ── #
-    s["_event_gold_base"] = quest_gold
-    s["_event_exp_base"]  = quest_exp
-    s["_event_fallen"]    = fallen
+    s["_event_gold_base"]   = quest_gold
+    s["_event_exp_base"]    = quest_exp
+    s["_event_fallen"]      = fallen
+    s["_event_full_roster"] = roster
     event_rewards = apply_event_bonus(s, s.get("quest_location", ""), s.get("quest_party"))
-    for key in ("_event_gold_base", "_event_exp_base", "_event_fallen", "_bones_doomed", "_bones_spared"):
+    for key in ("_event_gold_base", "_event_exp_base", "_event_fallen", "_event_full_roster", "_bones_doomed", "_bones_spared"):
         s.pop(key, None)
     rewards += event_rewards
 
@@ -463,6 +464,19 @@ def apply_quest_damage() -> dict:
         lc = s.get("location_clears", {})
         lc[quest_location] = lc.get(quest_location, 0) + 1
         s["location_clears"] = lc
+
+    # Decrement mage armor quest counts and remove expired entries
+    mage_armor_map = s.get("mage_armor", {})
+    for hero_name in list(mage_armor_map.keys()):
+        remaining_quests = mage_armor_map[hero_name] - 1
+        if remaining_quests <= 0:
+            del mage_armor_map[hero_name]
+        else:
+            mage_armor_map[hero_name] = remaining_quests
+    s["mage_armor"] = mage_armor_map
+
+    # Clear portal flag if active
+    s.pop("portal_active", None)
 
     for key in (
         "quest_start", "quest_id", "quest_name", "quest_danger",
@@ -489,6 +503,15 @@ def quest_info() -> dict:
         duration = float(s.get("quest_duration", 60))
     except Exception:
         return {"running": False}
+    # Portal spell: complete the quest instantly
+    if s.get("portal_active"):
+        return {
+            "running": False,
+            "elapsed": duration,
+            "remaining": 0.0,
+            "completed": True,
+            "duration": duration,
+        }
     elapsed = time.time() - start
     remaining = max(0.0, duration - elapsed)
     completed = elapsed >= duration

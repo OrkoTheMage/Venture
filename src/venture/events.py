@@ -203,7 +203,10 @@ def apply_event_bonus(state: dict, quest_location: str, party_names: list[str] |
 
     effect = event["effect"]
     roster = state.get("roster", [])
-    party  = [h for h in roster if party_names is None or h["name"] in party_names]
+    full_roster = state.get("_event_full_roster", roster)
+    party_names_set = set(party_names) if party_names is not None else None
+    party  = [h for h in roster if party_names_set is None or h["name"] in party_names_set]
+    full_party = [h for h in full_roster if party_names_set is None or h["name"] in party_names_set]
 
     rewards: list[str] = []
 
@@ -236,20 +239,28 @@ def apply_event_bonus(state: dict, quest_location: str, party_names: list[str] |
     # ── Recharge all spells for one random Wizard (The Arcane Tide) ──────── #
     elif effect == "spell_recharge":
         wizards_in_party = [
-            h for h in party
-            if h.get("class") == "Wizard" and h["name"] not in (state.get("_event_fallen", []))
+            h for h in full_party
+            if h.get("class") == "Wizard"
         ]
-        if wizards_in_party:
-            chosen = random.choice(wizards_in_party)
+        eligible_wizards = [h for h in wizards_in_party if int(h.get("lvl", 1)) > 1
+                            and h["name"] not in state.get("_event_fallen", [])]
+        if eligible_wizards:
+            chosen = random.choice(eligible_wizards)
             cast_log = state.get("spell_cast_log", {})
             hero_log = cast_log.get(chosen["name"], {})
             hero_log.pop("mage_armor_until", None)
             hero_log.pop("alchemize_until", None)
-            hero_log.pop("inspire", None)
+            hero_log.pop("inspire_until", None)
+            hero_log.pop("portal_until", None)
             cast_log[chosen["name"]] = hero_log
             state["spell_cast_log"] = cast_log
             rewards.append(
                 f"\033[32m[{event['name']}]\033[0m The tide recharged all of {chosen['name']}'s spells"
+            )
+        elif wizards_in_party:
+            lost = wizards_in_party[0]["name"]
+            rewards.append(
+                f"\033[32m[{event['name']}]\033[0m The tide's knowlege was lost on {lost}"
             )
 
     # ── +10% HP, +50% gold, +50% EXP (A Moment of Respite) ──────────────── #

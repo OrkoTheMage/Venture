@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import textwrap
-import time
 
 from .classBonuses import FIGHTER_TIME_REDUCTION
 from .combat import RESIST
@@ -56,9 +55,7 @@ def build_party_screen(
 ) -> list[str]:
     """Return display lines for the party selection screen."""
     mage_armor_map = (state or {}).get("mage_armor", {})
-    now = time.time()
-
-    # Adjusted duration (Fighter bonus applied to selected heroes)
+# Adjusted duration (Fighter bonus applied to selected heroes)
     base_dur = _LENGTH_SECONDS.get(length, 300)
     dur_multiplier = 1.0
     for s_idx in selected:
@@ -74,7 +71,7 @@ def build_party_screen(
     def _hero_tip(h: dict) -> str:
         hero_class = h.get("class", "")
         cfg = RESIST.get(hero_class, {"resist": [], "weak": []})
-        has_armor = mage_armor_map.get(h["name"], 0) > now
+        has_armor = mage_armor_map.get(h["name"], 0) > 0
         if enemy_types:
             types = [t.strip() for t in enemy_types.split("/")]
             if has_armor:
