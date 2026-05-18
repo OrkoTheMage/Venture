@@ -3,6 +3,7 @@ import random
 from .state import save_state
 from .combat import max_hp_for
 from .roster import ROSTER_CAP
+from .events import get_active_event
 
 _RECRUIT_NAMES = [
     "Aldric", "Brenna", "Corvus", "Dara", "Edwyn", "Fiona", "Gareth",
@@ -12,7 +13,7 @@ _RECRUIT_NAMES = [
     "Idris", "Joryn", "Keld", "Lyra", "Maren", "Noel", "Orin",
 ]
 
-_RECRUIT_LEVEL_EXP = {1: 0, 2: 100, 3: 200}
+_RECRUIT_LEVEL_EXP = {1: 0, 2: 100, 3: 200, 4: 400, 5: 800}
 
 
 def build_recruit_offers(state: dict) -> list[dict]:
@@ -59,6 +60,32 @@ def build_recruit_offers(state: dict) -> list[dict]:
 
     state["recruit_offers"] = offers
     save_state(state)
+
+    # Apply Shaded Carriage discount if active (slot 2 free, slot 3 50% off)
+    if get_active_event(0, state).get("effect") == "carriage":
+        if len(offers) > 1:
+            offers[1]["price"] = 0
+        if len(offers) > 2:
+            offers[2]["price"] = offers[2]["price"] // 2
+        state["recruit_offers"] = offers
+        save_state(state)
+
+    # Apply Returned Banner-Man if active event (4th slot, level 5, free)
+    if get_active_event(0, state).get("effect") == "banner_man":
+        existing_names = {o["name"].lower() for o in offers}
+        available_names = [n for n in _RECRUIT_NAMES if n.lower() not in existing_names]
+        if available_names:
+            name = random.choice(available_names)
+            cls  = random.choice(["Fighter", "Rogue", "Wizard", "Cleric"])
+            hp   = float(max_hp_for(cls, 5))
+            offers.append({
+                "name": name, "class": cls, "lvl": 5,
+                "price": 0, "hp": hp, "max_hp": hp, "exp": 800,
+                "hired": False, "banner_man": True,
+            })
+            state["recruit_offers"] = offers
+            save_state(state)
+
     return offers
 
 

@@ -10,7 +10,7 @@ except Exception:
 
 
 def get_ascii_lines(cols: int, rows: int) -> list[str]:
-    target = "asciiLarge.txt" if cols > 82 else "asciiSmall.txt"
+    target = "asciiLarge.txt" if cols > 82 and rows > 28 else "asciiSmall.txt"
     asset_dir = "ascii"
     candidates = [target]
     candidates_found: list[tuple[str, list[str]]] = []
