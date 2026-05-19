@@ -1,20 +1,21 @@
+![Title Screen](docs/screenshots/TitleLarge.png)
+
 A terminal-based RPG management game. Recruit heroes, send them on quests, manage your roster, and reclaim your ancestral estate.
 
-**Private Alpha** — early access build. Expect rough edges and missing content.
+**Alpha Build** — early access build. Expect rough edges and missing content.
 
 ---
 
 ## Overview
 
-![Title Screen](docs/screenshots/TitleScreenv2.png)
+![Lore Section](docs/screenshots/Lore.png)
 
-### Lore
+### Game Lore
 
-You inherit a fallen estate and must rebuild it by recruiting heroes, sending them on quests across five locations, and surviving the events that reshape your campaign each week.
+You inherit a fallen estate and must rebuild it by recruiting heroes, sending them on quests locations, and surviving the events that reshape your campaign each week.
 
 ### Requirements
 - Python 3.10 or later
-- A terminal at least 80 columns wide (115+ recommended for the large ASCII art)
 
 ---
 
@@ -25,6 +26,8 @@ You inherit a fallen estate and must rebuild it by recruiting heroes, sending th
 - Five regions: **The Estate**, **The Farmlands**, **The Moors**, **The Mountains**, **The Lochs**
 - Each region has a unique enemy pool and a boss quest
 
+![Quest Section](docs/screenshots/QuestSelectView.png)
+
 ### Events
 - A new event occurs each week, shaping the conditions of your campaign
 - Events range from boons and opportunities to threats and complications
@@ -34,6 +37,8 @@ You inherit a fallen estate and must rebuild it by recruiting heroes, sending th
 - Four classes: **Fighter**, **Rogue**, **Wizard**, **Cleric** — each with unique resistances, weaknesses, and class bonuses
 - Heroes gain EXP and level up to 5, unlocking stronger bonuses and spells
 - Fighter: reduces quest duration · Rogue: earns bonus gold · Cleric: heals party after quests
+
+![Roster Section](docs/screenshots/Rosterview.png)
 
 **Wizard Spells**
 
@@ -48,11 +53,16 @@ You inherit a fallen estate and must rebuild it by recruiting heroes, sending th
 - Journal tracks estate goals: hero milestones, relics acquired, bosses defeated
 - Graveyard records every fallen hero with date, quest, and enemy details
 
+![Journal Section](docs/screenshots/JournalView.png)
+![Gaveyard Section](docs/screenshots/GraveyardView1.png)
+
 ### Display
 - Responsive layout with compact and full modes based on terminal size
 - Live resize support — the screen redraws mid-prompt when the terminal is resized
 - ASCII art title screen with large and small variants
 - Block-character progress bars and card-based UI for heroes, quests, and spells
+
+![Titlev2 Section](docs/screenshots/TitleSmall.png)
 
 ---
 
@@ -115,30 +125,6 @@ PYTHONPATH=src python -m venture
 ```
 
 > Save state is stored in `~/.venture_state.json`. Delete it to start a fresh campaign.
-
----
-
-## Codebase
-
-```
-src/
-├── game.py        # main loop and command dispatch
-├── logic/         # game rules and state (quests, combat, events, heroes, spells)
-├── ui/            # display and interaction (screens, cards, renderer, terminal I/O)
-└── utils/         # generic helpers (state save/load, formatting)
-```
-
-**Key files**
-
-| File | Purpose |
-|------|---------|
-| `game.py` | Entry point; command routing and game loop |
-| `logic/quest.py` | Quest generation, damage resolution, and rewards |
-| `logic/heroes.py` | Roster data and hero management |
-| `logic/events.py` | Weekly event definitions and effects |
-| `ui/screen.py` | Terminal I/O, ANSI-aware rendering, and resize handling |
-| `ui/renderer.py` | Home screen and status bar rendering |
-| `utils/state.py` | JSON save / load / clear |
 
 ---
 
