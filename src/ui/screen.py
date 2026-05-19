@@ -1,10 +1,22 @@
 from __future__ import annotations
-
+import re
 import sys
+from collections.abc import Callable
 
 
-class Window:
-    """Simple terminal window renderer with a border."""
+# ── ANSI helper ───────────────────────────────────────────────────────────── #
+
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+
+def _visible_len(s: str) -> int:
+    # Length of s as it appears on screen, ignoring ANSI escape codes.
+    return len(_ANSI_RE.sub("", s))
+
+
+# ── Screen ────────────────────────────────────────────────────────────────── #
+
+# Owns terminal dimensions and all draw / input operations.
+class Screen:
 
     def __init__(self, width: int = 72, height: int = 20):
         self.width  = max(10, width)
@@ -13,15 +25,33 @@ class Window:
         #   resize_check() -> bool  – returns True when a resize is pending.
         #   on_resize()             – applies the resize and repaints the
         #                             current screen.
-        self.resize_check = None   # type: ignore[assignment]
-        self.on_resize    = None   # type: ignore[assignment]
+        self.resize_check: Callable[[], bool] | None = None
+        self.on_resize:    Callable[[], None] | None = None
+
+    # ── Render ────────────────────────────────────────────────────────────── #
 
     def render(self, lines: list[str]) -> None:
-        # Clear screen then print lines, each clipped/padded to self.width.
+        # Clear screen then print each line, clipped to self.width visible
+        # characters and padded to fill the column (ANSI-aware).
         print("\033[H\033[J", end="")
-        content = [str(l) for l in lines]
-        for ln in content[: self.height]:
-            print(ln[: self.width].ljust(self.width))
+        for ln in lines[: self.height]:
+            text    = str(ln)
+            visible = _ANSI_RE.sub("", text)
+            if len(visible) > self.width:
+                # Clip the raw string at the point where visible chars hit width.
+                count = 0
+                cut   = 0
+                for i, ch in enumerate(text):
+                    if not _ANSI_RE.match(text[i:]):
+                        count += 1
+                    if count > self.width:
+                        cut = i
+                        break
+                text = text[:cut]
+            pad  = max(0, self.width - _visible_len(text))
+            print(text + " " * pad)
+
+    # ── Prompt / input ────────────────────────────────────────────────────── #
 
     def prompt(self, prompt: str, hint: str = "") -> str:
         if hint:
@@ -33,19 +63,12 @@ class Window:
                 print()
         return self._read_line(prompt, hint)
 
-    # ── responsive readline ──────────────────────────────────────────────── #
+    # ── Responsive readline ───────────────────────────────────────────────── #
 
+    # Reads a line character-by-character with live resize support.
+    # Polls every 50 ms via select; fires resize_check / on_resize mid-input.
+    # Falls back to plain input() on Windows or when stdin is not a TTY.
     def _read_line(self, prompt: str, hint: str = "") -> str:
-        """Read a line from stdin with live terminal-resize support.
-
-        While blocked waiting for input the loop polls every 50 ms.  When a
-        resize is pending (``resize_check`` returns True) ``on_resize`` is
-        called to repaint the current screen at the new dimensions, then the
-        hint block and prompt are reprinted so the user can continue typing
-        without interruption.
-
-        Falls back to plain ``input()`` on Windows or when stdin is not a TTY.
-        """
         try:
             import select
             import tty
@@ -60,8 +83,8 @@ class Window:
         old = termios.tcgetattr(fd)
         buf: list[str] = []
 
+        # Reprint hint + prompt + already-typed buffer after a resize.
         def _repaint() -> None:
-            """Reprint hint + prompt + already-typed buffer after a resize."""
             if hint:
                 print()
                 print(hint)
@@ -79,10 +102,10 @@ class Window:
                 # ── check for pending terminal resize (fires every ≤50 ms) ─ #
                 if self.resize_check and self.resize_check():
                     if self.on_resize:
-                        self.on_resize()   # redraws current screen at new size
-                    _repaint()             # restore hint + prompt + typed chars
+                        self.on_resize()
+                    _repaint()
 
-                # ── wait up to 50 ms for a keypress ────────────────────── #
+                # ── wait up to 50 ms for a keypress ──────────────────────── #
                 ready, _, _ = select.select([sys.stdin], [], [], 0.05)
                 if not ready:
                     continue
@@ -114,10 +137,10 @@ class Window:
                         if nxt == "[":
                             r3, _, _ = select.select([sys.stdin], [], [], 0.02)
                             if r3:
-                                sys.stdin.read(1)   # direction / modifier char
+                                sys.stdin.read(1)
                     continue                     # silently discard
 
-                # ── printable character ─────────────────────────────────── #
+                # ── printable character ───────────────────────────────────── #
                 buf.append(ch)
                 print(ch, end="", flush=True)
 

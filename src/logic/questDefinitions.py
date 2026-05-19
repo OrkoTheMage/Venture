@@ -1,25 +1,6 @@
 from __future__ import annotations
 
-import textwrap
-
-
-def render_lore(lore: tuple[str, str] | str, width: int, indent: str = "  ") -> list[str]:
-    """Return display lines for a lore entry. The bold ending is rendered bold."""
-    if isinstance(lore, str):
-        return [f"{indent}{ln}" for ln in textwrap.wrap(lore, width=max(20, width))]
-    body, bold = lore
-    lines: list[str] = []
-    if body:
-        lines += [f"{indent}{ln}" for ln in textwrap.wrap(body, width=max(20, width))]
-    if bold:
-        lines += [f"{indent}\033[1m{ln}\033[0m" for ln in textwrap.wrap(bold, width=max(20, width))]
-    return lines
-
-
-def lore_line_count(lore: tuple[str, str] | str, width: int) -> int:
-    """Return the number of wrapped display lines for a lore entry."""
-    return len(render_lore(lore, width, indent=""))
-
+from ..utils.format import render_lore, lore_line_count  # noqa: F401 — re-exported for callers
 
 # ── Quest lore ────────────────────────────────────────────────────────────── #
 QUEST_LORE: dict[str, tuple[str, str]] = {

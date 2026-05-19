@@ -1,10 +1,10 @@
+from __future__ import annotations
 import copy
 import random
 import textwrap
 import time
 from pathlib import Path
-
-from .state import load_state, save_state
+from ..utils.state import load_state, save_state
 from .events import apply_event_bonus, get_active_event, pick_next_event
 from .combat import (
     calc_damage, exp_to_level, max_hp_for,
@@ -12,13 +12,12 @@ from .combat import (
 )
 from .classBonuses import FIGHTER_TIME_REDUCTION, CLERIC_HEAL_PCT, ROGUE_GOLD_BONUS
 from .spells import (
-    build_spell_card_lines,
     cast_wizard_spell,
     get_available_spells,
     get_casters_for_spell,
 )
 from .recruit import build_recruit_offers, hire_recruit
-from .graveyard import build_graveyard_lines, record_fallen
+from .fallen import record_fallen
 from .questDefinitions import (
     QUEST_LORE,
     render_lore,
@@ -38,22 +37,16 @@ _EXP_FOR_DANGER: dict[int, int] = {1: 10, 2: 20, 3: 30, 4: 40, 5: 50}
 _GOLD_FOR_DANGER: dict[int, int] = {1: 10, 2: 20, 3: 40, 4: 80, 5: 160}
 _GOLD_FOR_LENGTH: dict[str, int] = {"Short": 10, "Medium": 50, "Long": 100}
 
-_CARD_TPL = Path(__file__).parent / "ascii" / "questCard.txt"
+_QUEST_CARD_TPL = Path(__file__).parent / "ascii" / "questCard.txt"
 _ALLOWED_TYPES = ["Physical", "Magic", "Horror"]
 _LENGTH_SECONDS = {"Short": 300, "Medium": 1800, "Long": 3600}
 
 
-def format_duration(seconds: float | int) -> str:
-    try:
-        total = int(max(0, float(seconds)))
-    except Exception:
-        total = 0
-    mins, secs = divmod(total, 60)
-    return f"{mins}m {secs}s"
+from ..utils.format import format_duration  # noqa: F401 — re-exported for callers
 
 # ── Quest card rendering ─────────────────────────────────────────────────── #
+# Fill in random enemy types for any quest that doesn't have one yet.
 def _assign_enemies(quests: list[dict]) -> None:
-    """Fill in random enemy types for any quest that doesn't have one yet."""
     for q in quests:
         if q.get("enemies"):
             continue
@@ -67,8 +60,9 @@ def _assign_enemies(quests: list[dict]) -> None:
             q["enemies"] = random.choice(_ALLOWED_TYPES)
 
 
+# Substitute quest data into one quest card template.
+# Substitute quest data into one quest card template.
 def _render_quest_card(tpl: str, q: dict) -> str:
-    """Substitute quest data into one quest card template."""
     lines_tpl = tpl.splitlines()
     out: list[str] = []
     for line in lines_tpl:
@@ -286,7 +280,7 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
         return quests, lines
 
     try:
-        tpl = _CARD_TPL.read_text()
+        tpl = _QUEST_CARD_TPL.read_text()
         cards_text = ""
         for i, q in enumerate(quests, start=1):
             event_tag = _tag_str(q)
@@ -301,8 +295,8 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
 
 
 
+# Add quest_exp to a hero and update their level and max_hp in-place.
 def _award_exp(hero: dict, quest_exp: int) -> None:
-    """Add quest_exp to a hero and update their level and max_hp in-place."""
     new_exp = int(hero.get("exp", 0)) + quest_exp
     hero["exp"] = new_exp
     new_level = exp_to_level(new_exp)
@@ -316,8 +310,8 @@ def _award_exp(hero: dict, quest_exp: int) -> None:
         hero["max_hp"] = new_max
 
 
+# Apply scripted quest rewards to state. Returns reward description strings.
 def _apply_scripted_rewards(s: dict) -> list[str]:
-    """Apply scripted quest rewards to state. Returns reward description strings."""
     rewards: list[str] = []
     if s.get("quest_name") == "Gather Allies":
         new_heroes = [
@@ -363,10 +357,9 @@ def _apply_scripted_rewards(s: dict) -> list[str]:
     return rewards
 
 
+# Apply damage to quest party on completion and clear quest keys.
+# Returns a summary dict: {damage_taken: [(name, hp_pct_lost, exp_gained)], rewards: [str], fallen: [str]}.
 def apply_quest_damage() -> dict:
-    """Apply damage to quest party on completion and clear quest keys.
-    Returns a summary dict: {damage_taken: [(name, hp_pct_lost, exp_gained)], rewards: [str], fallen: [str]}.
-    """
     s = load_state()
     roster = s.get("roster", [])
     enemy_types = s.get("quest_enemies", "Physical")
@@ -549,8 +542,10 @@ def apply_quest_damage() -> dict:
 
 
 
+# ── Quest state ─────────────────────────────────────────────────────────── #
+
+# Return timing info for the active quest, or {'running': False} if none.
 def quest_info() -> dict:
-    """Return timing info for the active quest, or {'running': False} if none."""
     s = load_state()
     start = s.get("quest_start")
     if start is None:
@@ -581,8 +576,10 @@ def quest_info() -> dict:
     }
 
 
+# ── Quest start ─────────────────────────────────────────────────────────── #
+
+# Persist all quest keys into state and save.
 def start_quest(state: dict, chosen: dict, party: list[dict]) -> None:
-    """Persist all quest keys into state and save."""
     length = chosen.get("length", "Short")
     dur = _LENGTH_SECONDS.get(length, 300)
     # Fighter bonus: each Fighter's time reduction applies multiplicatively

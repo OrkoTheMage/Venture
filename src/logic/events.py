@@ -1,11 +1,4 @@
-"""
-events.py — Weekly event definitions and effect application.
-
-Each week one event is active. 75% chance of a location event, 25% town event.
-Never repeats the previous week's event.
-"""
 from __future__ import annotations
-
 import random
 
 # ── Location event definitions (75% chance) ──────────────────────────────── #
@@ -159,17 +152,17 @@ ALL_EVENTS: list[dict] = EVENTS + TOWN_EVENTS + RARE_EVENTS
 
 # ── Active event ─────────────────────────────────────────────────────────── #
 
+# Return the active event. Uses stored index from state if available,
+# otherwise falls back to week % len(EVENTS) (location events only).
 def get_active_event(week: int, state: dict | None = None) -> dict:
-    """Return the active event. Uses stored index from state if available,
-    otherwise falls back to week % len(EVENTS) (location events only)."""
     if state is not None and "active_event_idx" in state:
         return ALL_EVENTS[int(state["active_event_idx"]) % len(ALL_EVENTS)]
     return EVENTS[int(week) % len(EVENTS)]
 
 
+# Choose a new active event (never the same as the current one).
+# 75% location event, 24% town event, 1% rare event.
 def pick_next_event(state: dict) -> None:
-    """Choose a new active event (never the same as the current one).
-    75% location event, 24% town event, 1% rare event."""
     current_idx = int(state.get("active_event_idx", int(state.get("week", 0)) % len(EVENTS)))
 
     roll = random.random()
@@ -204,13 +197,11 @@ def pick_next_event(state: dict) -> None:
 
 # ── Apply bonus ───────────────────────────────────────────────────────────── #
 
+# Apply the active event's bonus after a quest completes.
+# Location events only fire if the quest location matches.
+# Town events (location=None) always fire.
+# Reads active_event_idx directly from state (not yet advanced to next week).
 def apply_event_bonus(state: dict, quest_location: str, party_names: list[str] | None) -> list[str]:
-    """
-    Apply the active event's bonus after a quest completes.
-    Location events only fire if the quest location matches.
-    Town events (location=None) always fire.
-    Reads active_event_idx directly from state (not yet advanced to next week).
-    """
     event = get_active_event(0, state)
 
     # Location events: only apply if quest was in the matching location
