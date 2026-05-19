@@ -10,10 +10,6 @@ A terminal-based RPG management game. Recruit heroes, send them on quests, manag
 
 ![Lore Section](docs/screenshots/Lore.png)
 
-### Game Lore
-
-You inherit a fallen estate and must rebuild it by recruiting heroes, sending them on quests locations, and surviving the events that reshape your campaign each week.
-
 ### Requirements
 - Python 3.10 or later
 
