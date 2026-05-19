@@ -38,18 +38,25 @@ class Screen:
             text    = str(ln)
             visible = _ANSI_RE.sub("", text)
             if len(visible) > self.width:
-                # Clip the raw string at the point where visible chars hit width.
+                # Walk the raw string, skip ANSI sequences entirely,
+                # and stop once self.width visible chars have been collected.
                 count = 0
-                cut   = 0
-                for i, ch in enumerate(text):
-                    if not _ANSI_RE.match(text[i:]):
+                out: list[str] = []
+                i = 0
+                while i < len(text):
+                    m = _ANSI_RE.match(text, i)
+                    if m:
+                        out.append(m.group())
+                        i = m.end()
+                    else:
+                        if count >= self.width:
+                            break
+                        out.append(text[i])
                         count += 1
-                    if count > self.width:
-                        cut = i
-                        break
-                text = text[:cut]
+                        i += 1
+                text = "".join(out)
             pad  = max(0, self.width - _visible_len(text))
-            print(text + " " * pad)
+            print(" " + text + " " * pad)
 
     # ── Prompt / input ────────────────────────────────────────────────────── #
 

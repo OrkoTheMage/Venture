@@ -1,4 +1,3 @@
-# Venture
 A terminal-based RPG management game. Recruit heroes, send them on quests, manage your roster, and reclaim your ancestral estate.
 
 **Private Alpha** — early access build. Expect rough edges and missing content.

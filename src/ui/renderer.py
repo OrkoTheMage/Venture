@@ -65,8 +65,8 @@ class Renderer:
 
         # ── Window ──────────────────────────────────────────────────────── #
         self.win = Screen(
-            width =max(20, min(self.cols - 4, 160)),
-            height=max(8,  min(self.rows - 4, 60)),
+            width =max(20, min(self.cols - 2, 160)),
+            height=max(8,  min(self.rows - 2, 60)),
         )
 
         # ── Game state ──────────────────────────────────────────────────── #
@@ -97,8 +97,8 @@ class Renderer:
         self.rows    = term.lines
         self.compact = self.rows < 45 or self.cols < 115
         if self.win is not None:
-            self.win.width  = max(20, min(self.cols - 4, 160))
-            self.win.height = max(8,  min(self.rows - 4, 60))
+            self.win.width  = max(20, min(self.cols - 2, 160))
+            self.win.height = max(8,  min(self.rows - 2, 60))
         self.ascii_lines    = get_ascii_lines(self.cols, self.rows)
         self._resize_pending = False
 
@@ -295,7 +295,7 @@ class Renderer:
         title      = "Claim your birthright!"
         left_pad   = max(0, (max_width - len(title)) // 2)
         prefix     = " " * left_pad
-        full_title = prefix + title
+        full_title = " " + prefix + title
 
         if first_launch:
             intro = [
@@ -307,6 +307,7 @@ class Renderer:
             print("\033[H\033[J", end="", flush=True)
             print()
             for line in intro:
+                print(" ", end="", flush=True)
                 for ch in line:
                     print(ch, end="")
                     sys.stdout.flush()
@@ -317,6 +318,7 @@ class Renderer:
         else:
             if lines and max_width:
                 print("\033[H\033[J", end="", flush=True)
+                print()
                 for _ in lines:
                     print()
                 col = 0
@@ -324,7 +326,7 @@ class Renderer:
                     col = min(col + 2, max_width)
                     print(f"\033[{len(lines)}A", end="")
                     for ln in lines:
-                        print(f"\r{ln[:col]}")
+                        print(f"\r {ln[:col]}")
                     sys.stdout.flush()
                     time.sleep(0.01)
                     if col >= max_width:
@@ -333,7 +335,7 @@ class Renderer:
 
         # ── Title reveal ─────────────────────────────────────────────────── #
         print()
-        print(f"\r{prefix}", end="")
+        print(f"\r {prefix}", end="")
         for ch in title:
             print(f"\033[1m{ch}\033[0m", end="")
             sys.stdout.flush()
@@ -345,7 +347,7 @@ class Renderer:
         if first_launch:
             print()
             for line in intro:
-                print(f"\033[2m{line}\033[0m")
+                print(f"\033[2m {line}\033[0m")
         print()
         print(f"\r\033[2m{full_title}\033[0m", end="")
         sys.stdout.flush()
@@ -396,11 +398,11 @@ class Renderer:
                 + (2 if _hints else 0)
                 + len(status_lines)
             )
-            avail_h    = max(0, self.win.height - 1 - c_static)
+            avail_h    = max(0, self.win.height - 2 - c_static)
             display    = [ln[:self.win.width] for ln in self.ascii_lines][:avail_h]
             logo_width = max((len(ln.rstrip()) for ln in display), default=0)
             sl  = stats_line.center(logo_width) if logo_width > len(stats_line) else stats_line
-            rl: list[str] = list(display)
+            rl: list[str] = [""] + list(display)
             if has_identity:
                 rl.append(f"\033[1m{sl}\033[0m")
             rl.append("")
@@ -422,11 +424,11 @@ class Renderer:
                 + len(_hints) * 2
                 + len(status_lines)
             )
-            avail_h    = max(0, self.win.height - 1 - r_static)
+            avail_h    = max(0, self.win.height - 2 - r_static)
             display    = [ln[:self.win.width] for ln in self.ascii_lines][:avail_h]
             logo_width = max((len(ln.rstrip()) for ln in display), default=0)
             sl  = stats_line.center(logo_width) if logo_width > len(stats_line) else stats_line
-            rl  = display + [""]
+            rl  = [""] + display + [""]
             if has_identity:
                 rl.append(f"\033[1m{sl}\033[0m")
                 rl += ["", ""]

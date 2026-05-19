@@ -37,7 +37,7 @@ _EXP_FOR_DANGER: dict[int, int] = {1: 10, 2: 20, 3: 30, 4: 40, 5: 50}
 _GOLD_FOR_DANGER: dict[int, int] = {1: 10, 2: 20, 3: 40, 4: 80, 5: 160}
 _GOLD_FOR_LENGTH: dict[str, int] = {"Short": 10, "Medium": 50, "Long": 100}
 
-_QUEST_CARD_TPL = Path(__file__).parent / "ascii" / "questCard.txt"
+_QUEST_CARD_TPL = Path(__file__).parent.parent / "ascii" / "questCard.txt"
 _ALLOWED_TYPES = ["Physical", "Magic", "Horror"]
 _LENGTH_SECONDS = {"Short": 300, "Medium": 1800, "Long": 3600}
 
