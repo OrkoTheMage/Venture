@@ -2,7 +2,7 @@
 
 A terminal-based RPG management game. Recruit heroes, send them on quests, manage your roster, and reclaim your ancestral estate.
 
-**Alpha Build** — early access build. Expect rough edges and missing content.
+**Alpha Build `v0.1.4`** — early access build. Expect rough edges and missing content.
 
 ---
 
