@@ -40,21 +40,11 @@ You inherit a fallen estate and must rebuild it by recruiting heroes, sending th
 
 ![Roster Section](docs/screenshots/Rosterview.png)
 
-**Wizard Spells**
-
-| Spell | Unlocks | Effect |
-|-------|---------|--------|
-| Mage Armor | Lvl 2 | Target hero resists all damage types for 3 quests |
-| Alchemize | Lvl 3 | 50% chance to double 100G — or lose it |
-| Portal | Lvl 4 | Next quest completes instantly |
-| Inspire | Lvl 5 | Grant 300 EXP to a chosen hero |
-
 ### Journal & Graveyard
 - Journal tracks estate goals: hero milestones, relics acquired, bosses defeated
 - Graveyard records every fallen hero with date, quest, and enemy details
 
 ![Journal Section](docs/screenshots/JournalView.png)
-![Gaveyard Section](docs/screenshots/GraveyardView1.png)
 
 ### Display
 - Responsive layout with compact and full modes based on terminal size
