@@ -27,10 +27,9 @@ You inherit a fallen estate and must rebuild it by recruiting heroes, sending th
 - Each region has a unique enemy pool and a boss quest
 
 ### Events
-- One event is active each week — location events (75%), town events (24%), rare events (1%)
-- **Location events:** Bountiful Harvest · Rich Veins · Creeping Revelation · The Arcane Tide
-- **Town events:** A Moment of Respite · Read The Bones · The Shaded Carriage · Thieves in the Night
-- **Rare events:** An Old Ally · Returned From The Styx · Dark Ritual · For Whom The Bell Tolls
+- A new event occurs each week, shaping the conditions of your campaign
+- Events range from boons and opportunities to threats and complications
+- Rare events can have significant and lasting consequences
 
 ### Classes
 - Four classes: **Fighter**, **Rogue**, **Wizard**, **Cleric** — each with unique resistances, weaknesses, and class bonuses
