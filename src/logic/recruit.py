@@ -1,10 +1,12 @@
+from __future__ import annotations
 import random
-
-from .state import save_state
+from ..utils.state import save_state
 from .combat import max_hp_for
-from .roster import ROSTER_CAP
+from .heroes import ROSTER_CAP
 from .events import get_active_event
 
+
+# ── Name / level pools ──────────────────────────────────────────────────── #
 _RECRUIT_NAMES = [
     "Aldric", "Brenna", "Corvus", "Dara", "Edwyn", "Fiona", "Gareth",
     "Hilda", "Ivar", "Jessa", "Karim", "Mord", "Nira", "Oswin",
@@ -16,8 +18,10 @@ _RECRUIT_NAMES = [
 _RECRUIT_LEVEL_EXP = {1: 0, 2: 100, 3: 200, 4: 400, 5: 800}
 
 
+# ── Offer generation ────────────────────────────────────────────────────── #
+
+# Return the 3 recruit offers, generating and caching them if not yet set.
 def build_recruit_offers(state: dict) -> list[dict]:
-    """Return the 3 recruit offers, generating and caching them if not yet set."""
     if state.get("recruit_offers"):
         return state["recruit_offers"]
 
@@ -89,8 +93,10 @@ def build_recruit_offers(state: dict) -> list[dict]:
     return offers
 
 
+# ── Hiring ───────────────────────────────────────────────────────────────── #
+
+# Hire the recruit at position idx (0-based). Returns (success, message).
 def hire_recruit(state: dict, idx: int) -> tuple[bool, str]:
-    """Hire the recruit at position idx (0-based). Returns (success, message)."""
     roster = state.get("roster", [])
     if len(roster) >= ROSTER_CAP:
         return False, f"Roster is full ({ROSTER_CAP}/{ROSTER_CAP}). Dismiss a hero before recruiting."

@@ -1,33 +1,25 @@
-"""Interactive mode handlers for each game screen.
-
-Each function accepts a ``Game`` instance and returns ``True`` if the player
-chose to quit, ``False`` to return to the home screen.
-"""
-
 from __future__ import annotations
-
 import shlex
 import time
-from typing import TYPE_CHECKING
-
-from . import combat, roster as roster_mod, quest as quest_mod
+from ..logic import combat, quest as quest_mod
+from ..utils.state import load_state, save_state
+from ..logic import heroes as roster_logic
+from . import graveyard as graveyard_mod, journal as journal_mod, cards as cards_mod
 from .party import build_party_screen, compact_heroes_per_page
-from .state import load_state, save_state
-
-if TYPE_CHECKING:
-    from .game import Game
+from .roster import build_roster_lines
+from .renderer import Renderer
 
 
 # ── Roster ───────────────────────────────────────────────────────────────── #
 
-def _show_roster(game: Game, page: int = 0) -> None:
-    roster_mod.ensure_default_roster(game.state)
-    lines = roster_mod.build_roster_lines(game.state, page, compact=game.compact)
+def _show_roster(game: Renderer, page: int = 0) -> None:
+    roster_logic.ensure_default_roster(game.state)
+    lines = build_roster_lines(game.state, page, compact=game.compact)
     game.win.render(lines[:game.win.height])
 
 
-def enter_roster_mode(game: Game) -> bool:
-    """Returns True if the player wants to quit the game."""
+# Returns True if the player wants to quit the game.
+def enter_roster_mode(game: Renderer) -> bool:
     current_page = 0
     first_visit = not game.roster_seen
     _show_roster(game, current_page)
@@ -41,7 +33,7 @@ def enter_roster_mode(game: Game) -> bool:
     game.roster_seen = True
 
     def _on_resize() -> None:
-        game._apply_resize()
+        game.apply_resize()
         _show_roster(game, current_page)
     game.win.on_resize = _on_resize
 
@@ -60,7 +52,7 @@ def enter_roster_mode(game: Game) -> bool:
         verb = parts[0].lower() if parts else ""
         # Page navigation: a bare digit navigates to that roster page
         if verb.isdigit():
-            total = roster_mod.get_roster_page_count(game.state)
+            total = roster_logic.get_roster_page_count(game.state)
             p = int(verb) - 1
             if 0 <= p < total:
                 current_page = p
@@ -68,7 +60,7 @@ def enter_roster_mode(game: Game) -> bool:
             else:
                 print(f"Invalid page. Enter 1-{total}.")
             continue
-        result = roster_mod.handle_roster_command(verb, parts, game.state)
+        result = roster_logic.handle_roster_command(verb, parts, game.state)
         if result == "quit":
             print("Goodbye!")
             return True
@@ -80,8 +72,8 @@ def enter_roster_mode(game: Game) -> bool:
 
 # ── Spells ───────────────────────────────────────────────────────────────── #
 
-def enter_spell_mode(game: Game) -> bool:
-    """Returns True if the player wants to quit."""
+# Returns True if the player wants to quit.
+def enter_spell_mode(game: Renderer) -> bool:
     # Block opening the spells view while a quest is active
     qi = quest_mod.quest_info()
     if qi.get("running"):
@@ -94,7 +86,7 @@ def enter_spell_mode(game: Game) -> bool:
         return False
 
     def _show_spells(msg: str = "") -> None:
-        lines = quest_mod.build_spell_card_lines(game.state, compact=game.compact)
+        lines = cards_mod.build_spell_card_lines(game.state, compact=game.compact)
         if msg:
             lines += ["", f"  {msg}"]
         game.win.render(lines[:game.win.height])
@@ -102,7 +94,7 @@ def enter_spell_mode(game: Game) -> bool:
     _show_spells()
 
     def _on_resize() -> None:
-        game._apply_resize()
+        game.apply_resize()
         _show_spells()
     game.win.on_resize = _on_resize
 
@@ -218,13 +210,13 @@ def enter_spell_mode(game: Game) -> bool:
 
 # ── Recruit ──────────────────────────────────────────────────────────────── #
 
-def enter_recruit_mode(game: Game) -> bool:
-    """Returns True if the player wants to quit."""
+# Returns True if the player wants to quit.
+def enter_recruit_mode(game: Renderer) -> bool:
 
     def _show_recruits() -> None:
         offers = quest_mod.build_recruit_offers(game.state)
         gold = int(game.state.get("gold", 0))
-        lines = [f"  Gold: {gold}G"] + roster_mod.build_recruit_card_lines(
+        lines = [f"  Gold: {gold}G"] + cards_mod.build_recruit_card_lines(
             offers, compact=game.compact
         )
         game.win.render(lines[:game.win.height])
@@ -232,7 +224,7 @@ def enter_recruit_mode(game: Game) -> bool:
     _show_recruits()
 
     def _on_resize() -> None:
-        game._apply_resize()
+        game.apply_resize()
         _show_recruits()
     game.win.on_resize = _on_resize
 
@@ -261,7 +253,7 @@ def enter_recruit_mode(game: Game) -> bool:
 # ── Quest / Party selection ───────────────────────────────────────────────── #
 
 def select_party(
-    game: Game,
+    game: Renderer,
     quest_name: str,
     max_party: int = 4,
     enemy_types: str = "",
@@ -297,7 +289,7 @@ def select_party(
     _draw()
 
     def _on_resize() -> None:
-        game._apply_resize()
+        game.apply_resize()
         _draw()
     game.win.on_resize = _on_resize
 
@@ -343,14 +335,14 @@ def select_party(
         _draw()
 
 
-def enter_quest_mode(game: Game) -> bool:
-    """Returns True if the player wants to quit the game."""
+# Returns True if the player wants to quit the game.
+def enter_quest_mode(game: Renderer) -> bool:
     quests, card_lines = quest_mod.build_quest_cards(game.state, compact=game.compact)
     game.win.render(card_lines[:game.win.height])
 
     def _on_resize() -> None:
         nonlocal card_lines
-        game._apply_resize()
+        game.apply_resize()
         _, card_lines = quest_mod.build_quest_cards(game.state, compact=game.compact)
         game.win.render(card_lines[:game.win.height])
     game.win.on_resize = _on_resize
@@ -402,3 +394,55 @@ def enter_quest_mode(game: Game) -> bool:
                 )
                 return False
         print(f"Please choose 1-{len(quests)}, 'back', or 'quit'.")
+
+
+# ── Graveyard ────────────────────────────────────────────────────────────── #
+
+# Returns True if the player wants to quit.
+def enter_graveyard_mode(game: Renderer) -> bool:
+    def _show() -> None:
+        lines = graveyard_mod.build_graveyard_lines(game.state, compact=game.compact)
+        game.win.render(lines[:game.win.height])
+
+    _show()
+
+    def _on_resize() -> None:
+        game.apply_resize()
+        _show()
+    game.win.on_resize = _on_resize
+
+    try:
+        raw = game.win.prompt("graveyard> ", hint="Press 'ENTER' to return").strip()
+    except (EOFError, KeyboardInterrupt):
+        raw = ""
+
+    if raw.lower() in ("quit", "exit"):
+        print("Goodbye!")
+        return True
+    return False
+
+
+# ── Journal ──────────────────────────────────────────────────────────────── #
+
+# Returns True if the player wants to quit.
+def enter_journal_mode(game: Renderer) -> bool:
+    def _show() -> None:
+        lines = journal_mod.build_journal_lines(game.state, compact=game.compact)
+        game.win.render(lines[:game.win.height])
+
+    _show()
+
+    def _on_resize() -> None:
+        game.apply_resize()
+        _show()
+    game.win.on_resize = _on_resize
+
+    try:
+        raw = game.win.prompt("journal> ", hint="Press 'ENTER' to return").strip()
+    except (EOFError, KeyboardInterrupt):
+        raw = ""
+
+    if raw.lower() in ("quit", "exit"):
+        print("Goodbye!")
+        return True
+    return False

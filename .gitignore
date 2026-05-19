@@ -10,7 +10,6 @@ dist/
 build/
 *.egg-info/
 *.egg
-MANIFEST
 
 # Virtual environments
 .venv/
@@ -45,9 +44,6 @@ htmlcov/
 # IDEs
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 
 # macOS
 .DS_Store
@@ -55,7 +51,7 @@ htmlcov/
 .LSOverride
 
 # Dev / cheat commands (local only)
-src/venture/dev.py
+src/dev.py
 
 # Logs
 *.log

@@ -1,60 +1,30 @@
+from __future__ import annotations
+
 import random
 import time
-from pathlib import Path
 
-from .state import save_state
+from ..utils.state import save_state
 from .combat import exp_to_level, max_hp_for
 
-_SPELL_CARD_TPL = Path(__file__).parent / "ascii" / "spellCard.txt"
 
+# ── Spell definitions ─────────────────────────────────────────────────────── #
 
-def _render_spell_card(tpl: str, sp: dict) -> str:
-    """Substitute spell data into one spell card template."""
-    lines_tpl = tpl.splitlines()
-    out: list[str] = []
-    for line in lines_tpl:
-        if "Spell Name" in line:
-            l = line.find("│")
-            r = line.rfind("│")
-            if l != -1 and r != -1 and r > l:
-                line = line[: l + 1] + f"\033[1m{sp['spell_label'].center(r - l - 1)}\033[0m" + line[r:]
-        elif "Target: Self/Other" in line and "││" in line:
-            l = line.find("││") + 2
-            r = line.rfind("││")
-            if r > l:
-                line = line[:l] + f"Target: {sp['target']}".center(r - l) + line[r:]
-        elif "Effect: Resist All Types" in line and "││" in line:
-            l = line.find("││") + 2
-            r = line.rfind("││")
-            if r > l:
-                line = line[:l] + sp["desc"][: r - l].center(r - l) + line[r:]
-        elif "Duration: One Day" in line and "││" in line:
-            l = line.find("││") + 2
-            r = line.rfind("││")
-            if r > l:
-                line = line[:l] + sp["duration"][: r - l].center(r - l) + line[r:]
-        out.append(line)
-    return "\n".join(out)
-
-
+# Return available wizard spells for all wizards in the roster.
+# Each entry: {wizard, spell, desc, can_cast, reason}
 def get_wizard_spells(state: dict) -> list[dict]:
-    """Return available wizard spells for all wizards in the roster.
-
-    Each entry: {wizard, spell, desc, can_cast, reason}
-    """
     cast_log = state.get("spell_cast_log", {})
     spells: list[dict] = []
 
     for h in state.get("roster", []):
         if h.get("class") != "Wizard":
             continue
-        lvl = int(h.get("lvl", 1))
-        name = h["name"]
+        lvl      = int(h.get("lvl", 1))
+        name     = h["name"]
         hero_log = cast_log.get(name, {})
 
         if lvl >= 2:
             armor_expiry = hero_log.get("mage_armor_until", 0)
-            armor_ready = time.time() >= armor_expiry
+            armor_ready  = time.time() >= armor_expiry
             spells.append({
                 "wizard":      name,
                 "spell":       "mage_armor",
@@ -68,7 +38,7 @@ def get_wizard_spells(state: dict) -> list[dict]:
 
         if lvl >= 3:
             alchemize_expiry = hero_log.get("alchemize_until", 0)
-            alchemize_ready = time.time() >= alchemize_expiry
+            alchemize_ready  = time.time() >= alchemize_expiry
             spells.append({
                 "wizard":      name,
                 "spell":       "alchemize",
@@ -82,7 +52,7 @@ def get_wizard_spells(state: dict) -> list[dict]:
 
         if lvl >= 4:
             portal_expiry = hero_log.get("portal_until", 0)
-            portal_ready = time.time() >= portal_expiry
+            portal_ready  = time.time() >= portal_expiry
             spells.append({
                 "wizard":      name,
                 "spell":       "portal",
@@ -96,7 +66,7 @@ def get_wizard_spells(state: dict) -> list[dict]:
 
         if lvl >= 5:
             inspire_expiry = hero_log.get("inspire_until", 0)
-            inspire_ready = time.time() >= inspire_expiry
+            inspire_ready  = time.time() >= inspire_expiry
             spells.append({
                 "wizard":      name,
                 "spell":       "inspire",
@@ -110,9 +80,8 @@ def get_wizard_spells(state: dict) -> list[dict]:
 
     return spells
 
-
+# Return one entry per unique spell type, marked ready if any wizard can cast it.
 def get_available_spells(state: dict) -> list[dict]:
-    """Return one entry per unique spell type, marked ready if any wizard can cast it."""
     all_spells = get_wizard_spells(state)
     seen: dict[str, dict] = {}
     for sp in all_spells:
@@ -121,49 +90,20 @@ def get_available_spells(state: dict) -> list[dict]:
             seen[key] = dict(sp)
         elif sp["can_cast"]:
             seen[key]["can_cast"] = True
-            seen[key]["reason"] = ""
+            seen[key]["reason"]   = ""
     return list(seen.values())
 
-
+# Return all wizards who have access to the given spell, with cast status.
 def get_casters_for_spell(state: dict, spell: str) -> list[dict]:
-    """Return all wizards who have access to the given spell, with cast status."""
     return [sp for sp in get_wizard_spells(state) if sp["spell"] == spell]
 
 
-def build_spell_card_lines(state: dict, compact: bool = False) -> list[str]:
-    """Return display lines for the spell menu — one card per unique spell type."""
-    spells = get_available_spells(state)
-    if not spells:
-        return ["", "  No wizard spells available (need a Wizard at level 2+).", ""]
+# ── Spell casting ─────────────────────────────────────────────────────────── #
 
-    if compact:
-        lines: list[str] = ["", "Wizard Spells:"]
-        for i, sp in enumerate(spells, start=1):
-            status = "(Ready)" if sp["can_cast"] else f"({sp['reason']})"
-            lines.append(f"  {i}. \033[1m{sp['spell_label']}\033[0m: {sp['desc']} {status}")
-        lines.append("")
-        return lines
-
-    try:
-        tpl = _SPELL_CARD_TPL.read_text()
-        lines = [""]
-        for i, sp in enumerate(spells, start=1):
-            status = "[Ready]" if sp["can_cast"] else f"[{sp['reason']}]"
-            lines.append(f"  {i}. {status}")
-            lines += _render_spell_card(tpl, sp).splitlines()
-        return lines
-    except Exception:
-        lines = ["", "Wizard Spells:"]
-        for i, sp in enumerate(spells, start=1):
-            status = "(Ready)" if sp["can_cast"] else f"({sp['reason']})"
-            lines.append(f"  {i}. \033[1m{sp['spell_label']}\033[0m: {sp['desc']} {status}")
-        return lines
-
-
+# Cast a wizard spell. Returns (success, message).
 def cast_wizard_spell(
     state: dict, wizard_name: str, spell: str, target_hero: str | None = None
 ) -> tuple[bool, str]:
-    """Cast a wizard spell. Returns (success, message)."""
     roster = state.get("roster", [])
     wizard = next((h for h in roster if h["name"] == wizard_name), None)
     if wizard is None:
@@ -171,7 +111,7 @@ def cast_wizard_spell(
     if wizard.get("class") != "Wizard":
         return False, f"{wizard_name} is not a Wizard."
 
-    lvl = int(wizard.get("lvl", 1))
+    lvl      = int(wizard.get("lvl", 1))
     cast_log = state.setdefault("spell_cast_log", {})
     hero_log = cast_log.setdefault(wizard_name, {})
 
@@ -182,8 +122,7 @@ def cast_wizard_spell(
         if gold < 100:
             return False, f"Not enough gold. Need 100G, have {gold}G."
         state["gold"] = gold - 100
-        expiry = time.time() + 3600
-        hero_log["alchemize_until"] = expiry
+        hero_log["alchemize_until"] = time.time() + 3600
         save_state(state)
         if random.random() < 0.5:
             state["gold"] = state["gold"] + 200
@@ -198,9 +137,7 @@ def cast_wizard_spell(
             return False, "Mage Armor is still on cooldown."
         if target_hero is None:
             return False, "Mage Armor requires a target hero."
-        target = next(
-            (h for h in roster if h["name"].lower() == target_hero.lower()), None
-        )
+        target = next((h for h in roster if h["name"].lower() == target_hero.lower()), None)
         if target is None:
             return False, f"Hero '{target_hero}' not found."
         state.setdefault("mage_armor", {})[target["name"]] = 3
@@ -226,18 +163,16 @@ def cast_wizard_spell(
             return False, "Inspire is still on cooldown."
         if target_hero is None:
             return False, "Inspire requires a target hero."
-        target = next(
-            (h for h in roster if h["name"].lower() == target_hero.lower()), None
-        )
+        target = next((h for h in roster if h["name"].lower() == target_hero.lower()), None)
         if target is None:
             return False, f"Hero '{target_hero}' not found."
         target["exp"] = int(target.get("exp", 0)) + 300
-        new_lvl = exp_to_level(target["exp"])
-        old_lvl = int(target.get("lvl", 1))
+        new_lvl       = exp_to_level(target["exp"])
+        old_lvl       = int(target.get("lvl", 1))
         target["lvl"] = new_lvl
         if new_lvl != old_lvl:
-            old_max = float(target.get("max_hp", 100))
-            new_max = float(max_hp_for(target.get("class", "Fighter"), new_lvl))
+            old_max        = float(target.get("max_hp", 100))
+            new_max        = float(max_hp_for(target.get("class", "Fighter"), new_lvl))
             if old_max > 0:
                 target["hp"] = min(new_max, float(target.get("hp", old_max)) / old_max * new_max)
             target["max_hp"] = new_max

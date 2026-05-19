@@ -1,10 +1,15 @@
-from pathlib import Path
+from __future__ import annotations
 import json
+from pathlib import Path
 
+
+# ── State path ────────────────────────────────────────────────────────────── #
 
 def state_path() -> Path:
     return Path.home() / ".venture_state.json"
 
+
+# ── Load / save / clear ───────────────────────────────────────────────────── #
 
 def load_state() -> dict:
     p = state_path()

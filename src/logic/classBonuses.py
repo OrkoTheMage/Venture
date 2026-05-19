@@ -1,4 +1,7 @@
-# ── Class bonus tables ─────────────────────────────────────────────────────── #
+from __future__ import annotations
+
+
+# ── Class bonus tables ────────────────────────────────────────────────────── #
 # Per-level special bonuses that apply during and after quests.
 
 # Fighter: multiplicative quest time reduction per level

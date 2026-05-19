@@ -1,20 +1,21 @@
-"""Party selection screen builder."""
+# Party selection screen builder.
 
 from __future__ import annotations
 
 import math
 import textwrap
 
-from .classBonuses import FIGHTER_TIME_REDUCTION
-from .combat import RESIST
-from .quest import _LENGTH_SECONDS, format_duration
-from .questDefinitions import QUEST_LORE, render_lore, lore_line_count
+from ..logic.classBonuses import FIGHTER_TIME_REDUCTION
+from ..logic.combat import RESIST
+from ..logic.quest import _LENGTH_SECONDS, format_duration
+from ..logic.questDefinitions import QUEST_LORE, render_lore, lore_line_count
 
 
+# ── Layout helpers ───────────────────────────────────────────────────────── #
+
+# Lines occupied by the compact info block (header through Choose+blank).
+# Does NOT include hero rows, nav hint, or trailing blank.
 def compact_info_height(quest_name: str, width: int, enemy_types: str) -> int:
-    """Lines occupied by the compact info block (header through Choose+blank).
-    Does NOT include hero rows, nav hint, or trailing blank.
-    """
     n = 4  # header + blank + "Choose" line + blank
     if enemy_types:
         n += 2  # enemies/duration line + blank
@@ -24,13 +25,11 @@ def compact_info_height(quest_name: str, width: int, enemy_types: str) -> int:
     return n
 
 
+# Max hero rows that fit on one page in compact mode.
+# Accounts for: info block (without choose/blank) + choose(1) + blank(1)
+# + heroes + blank(1) + nav hint(1) + trailing blank(1).
+# The trailing blank overflows by 1 and is safely clipped by win.render.
 def compact_heroes_per_page(quest_name: str, width: int, enemy_types: str, win_height: int) -> int:
-    """Max hero rows that fit on one page in compact mode.
-
-    Accounts for: info block (without choose/blank) + choose(1) + blank(1)
-    + heroes + blank(1) + nav hint(1) + trailing blank(1).
-    The trailing blank overflows by 1 and is safely clipped by win.render.
-    """
     info_h = compact_info_height(quest_name, width, enemy_types)
     # info_h includes choose+blank (+2); build_party_screen adds those after
     # computing per_page, so effective info at calc time = info_h - 2.
@@ -38,6 +37,9 @@ def compact_heroes_per_page(quest_name: str, width: int, enemy_types: str, win_h
     return max(3, win_height - info_h - 2)
 
 
+# ── Screen builder ───────────────────────────────────────────────────────── #
+
+# Return display lines for the party selection screen.
 def build_party_screen(
     quest_name: str,
     roster: list[dict],
@@ -53,7 +55,6 @@ def build_party_screen(
     win_height: int | None = None,
     location: str = "",
 ) -> list[str]:
-    """Return display lines for the party selection screen."""
     mage_armor_map = (state or {}).get("mage_armor", {})
 # Adjusted duration (Fighter bonus applied to selected heroes)
     base_dur = _LENGTH_SECONDS.get(length, 300)
@@ -88,7 +89,7 @@ def build_party_screen(
         return "  [Mage Armor]" if has_armor else ""
 
     def _hero_row(i: int, h: dict) -> str:
-        marker = "[x]" if (i - 1) in selected else "[ ]"
+        marker = "[\033[1;32mX\033[0m]" if (i - 1) in selected else "[ ]"
         hp_pct = int(float(h.get("hp", 100)) / max(1.0, float(h.get("max_hp", 100))) * 100)
         name   = h["name"][:12]
         return (
