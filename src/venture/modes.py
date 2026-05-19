@@ -39,6 +39,12 @@ def enter_roster_mode(game: Game) -> bool:
     game.state["roster_seen"] = True
     save_state(game.state)
     game.roster_seen = True
+
+    def _on_resize() -> None:
+        game._apply_resize()
+        _show_roster(game, current_page)
+    game.win.on_resize = _on_resize
+
     while True:
         combat.apply_regen(game.state)
         try:
@@ -94,6 +100,12 @@ def enter_spell_mode(game: Game) -> bool:
         game.win.render(lines[:game.win.height])
 
     _show_spells()
+
+    def _on_resize() -> None:
+        game._apply_resize()
+        _show_spells()
+    game.win.on_resize = _on_resize
+
     while True:
         combat.apply_regen(game.state)
         try:
@@ -218,6 +230,12 @@ def enter_recruit_mode(game: Game) -> bool:
         game.win.render(lines[:game.win.height])
 
     _show_recruits()
+
+    def _on_resize() -> None:
+        game._apply_resize()
+        _show_recruits()
+    game.win.on_resize = _on_resize
+
     while True:
         combat.apply_regen(game.state)
         try:
@@ -277,6 +295,12 @@ def select_party(
         game.win.render(lines[:game.win.height])
 
     _draw()
+
+    def _on_resize() -> None:
+        game._apply_resize()
+        _draw()
+    game.win.on_resize = _on_resize
+
     while True:
         combat.apply_regen(game.state)
         try:
@@ -324,7 +348,16 @@ def enter_quest_mode(game: Game) -> bool:
     quests, card_lines = quest_mod.build_quest_cards(game.state, compact=game.compact)
     game.win.render(card_lines[:game.win.height])
 
+    def _on_resize() -> None:
+        nonlocal card_lines
+        game._apply_resize()
+        _, card_lines = quest_mod.build_quest_cards(game.state, compact=game.compact)
+        game.win.render(card_lines[:game.win.height])
+    game.win.on_resize = _on_resize
+
     while True:
+        # Restore after select_party may have replaced win.on_resize.
+        game.win.on_resize = _on_resize
         combat.apply_regen(game.state)
         try:
             choice = game.win.prompt(

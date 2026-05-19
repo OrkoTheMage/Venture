@@ -253,31 +253,33 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
         state["available_quests"] = quests
         save_state(state)
 
+    def _tag_str(q: dict, short: bool = False) -> str:
+        parts = []
+        if q.get("event_quest"):  parts.append("\033[32m[E]\033[0m" if short else "\033[32m[Event]\033[0m")
+        if q.get("boss"):         parts.append("\033[31m[B]\033[0m" if short else "\033[31m[Boss]\033[0m")
+        return (" ".join(parts) + " ") if parts else ""
+    def _tag_w(q: dict, short: bool = False) -> int:
+        w = 0
+        if q.get("event_quest"):  w += len("[E] ") if short else len("[Event] ")
+        if q.get("boss"):         w += len("[B] ") if short else len("[Boss] ")
+        return w
+
     if compact:
         lines = ["", "  Available Quests:", ""]
-        def _tag_str(q: dict) -> str:
-            parts = []
-            if q.get("event_quest"):  parts.append("\033[32m[Event]\033[0m")
-            if q.get("boss"):         parts.append("\033[31m[Boss]\033[0m")
-            return (" ".join(parts) + " ") if parts else ""
-        def _tag_w(q: dict) -> int:
-            w = 0
-            if q.get("event_quest"):  w += len("[Event] ")
-            if q.get("boss"):         w += len("[Boss] ")
-            return w
-        name_w    = max(len(q["name"]) + _tag_w(q)            for q in quests)
+        name_w    = max(len(q["name"]) + _tag_w(q, short=True) for q in quests)
         length_w  = max(len(q["length"])                      for q in quests)
-        enemies_w = max(len(q["enemies"])                     for q in quests)
+        enemies_w = max(len(q["enemies"]) for q in quests)
         loc_w     = max(len(q.get("location", ""))            for q in quests)
         for i, q in enumerate(quests, start=1):
             loc       = q.get("location", "")
-            event_tag = _tag_str(q)
-            name_pad  = name_w - _tag_w(q)
+            enemies   = q["enemies"]
+            event_tag = _tag_str(q, short=True)
+            name_pad  = name_w - _tag_w(q, short=True)
             lines.append(
                 f"  {i}.  {event_tag}\033[1m{q['name']:<{name_pad}}\033[0m"
-                f"  \u2502  Danger {q['danger']}"
+                f"  \u2502  D{q['danger']}"
                 f"  \u2502  {q['length']:<{length_w}}"
-                f"  \u2502  {q['enemies']:<{enemies_w}}"
+                f"  \u2502  {enemies:<{enemies_w}}"
                 + (f"  \u2502  {loc:<{loc_w}}" if loc else "")
             )
         lines.append("")
@@ -287,13 +289,12 @@ def build_quest_cards(state: dict, compact: bool = False) -> tuple[list[dict], l
         tpl = _CARD_TPL.read_text()
         cards_text = ""
         for i, q in enumerate(quests, start=1):
-            event_tag = "\033[32m[Event]\033[0m " if q.get("event_quest") else ""
+            event_tag = _tag_str(q)
             cards_text += f" {i}. {event_tag}\n" + _render_quest_card(tpl, q) + "\n\n"
         return quests, cards_text.splitlines()
     except Exception:
         fallback = [
-            ("\033[32m[Event]\033[0m " if q.get("event_quest") else "") +
-            f"{i}. {q['name']} - Danger {q['danger']} - {q['length']} - {q['enemies']}"
+            _tag_str(q) + f"{i}. {q['name']} - Danger {q['danger']} - {q['length']} - {q['enemies']}"
             for i, q in enumerate(quests, start=1)
         ]
         return quests, fallback

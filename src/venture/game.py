@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import shutil
 import shlex
+import signal
 import sys
 import textwrap
 import time
@@ -30,6 +31,26 @@ class Game:
         self.estate_name: str | None = None
         self.roster_seen: bool = False
         self.ascii_lines: list[str] = []
+        self._resize_pending: bool = False
+
+    # ── Terminal resize ───────────────────────────────────────────────────── #
+
+    def _apply_resize(self) -> None:
+        """Re-measure the terminal and update window dimensions, compact flag,
+        and ASCII art.  Called whenever a SIGWINCH is detected."""
+        term = shutil.get_terminal_size(fallback=(80, 24))
+        cols, rows = term.columns, term.lines
+        self.compact = rows < 45 or cols < 115
+        if self.win is not None:
+            self.win.width  = max(20, min(cols - 4, 160))
+            self.win.height = max(8,  min(rows - 4, 60))
+        self.ascii_lines = get_ascii_lines(cols, rows)
+        self._resize_pending = False
+
+    def _home_on_resize(self) -> None:
+        """Resize callback active while the main home-screen prompt is showing."""
+        self._apply_resize()
+        self._render_home()
 
     # ── Home screen helpers ──────────────────────────────────────────────── #
 
@@ -391,6 +412,20 @@ class Game:
         self.roster_seen = self.state.get("roster_seen")
         self.ascii_lines = get_ascii_lines(cols, rows)
 
+        # Install SIGWINCH handler so the UI redraws on terminal resize.
+        # SIGWINCH is Unix-only; guard gracefully for Windows / odd environments.
+        try:
+            def _on_sigwinch(signum, frame):   # noqa: ARG001
+                self._resize_pending = True
+            signal.signal(signal.SIGWINCH, _on_sigwinch)
+        except (AttributeError, OSError):
+            pass
+
+        # Give Window.prompt the hook it needs to detect and act on resizes.
+        self.win.resize_check = lambda: self._resize_pending
+        # Default repaint callback — overridden per-screen inside each mode.
+        self.win.on_resize = self._home_on_resize
+
         self._animate_logo(first_launch=not bool(self.player_name))
         self._render_home()
 
@@ -415,6 +450,14 @@ class Game:
         # ── main command loop ────────────────────────────────────────────── #
         skip_prompt = False
         while True:
+            # Redraw immediately if the terminal was resized while we were
+            # blocked waiting for input (SIGWINCH sets _resize_pending).
+            if self._resize_pending:
+                self._apply_resize()
+                self._render_home()
+            # Restore the home-screen handler each iteration so sub-modes
+            # that override win.on_resize don't leave a stale callback.
+            self.win.on_resize = self._home_on_resize
             combat.apply_regen(self.state)
             try:
                 if skip_prompt:
@@ -527,6 +570,11 @@ class Game:
                 save_state(self.state)
                 lines = quest_mod.build_graveyard_lines(self.state, compact=self.compact)
                 self.win.render(lines[:self.win.height])
+                def _grav_resize() -> None:
+                    self._apply_resize()
+                    _gl = quest_mod.build_graveyard_lines(self.state, compact=self.compact)
+                    self.win.render(_gl[:self.win.height])
+                self.win.on_resize = _grav_resize
                 try:
                     self.win.prompt("graveyard> ", hint="Press 'ENTER' to return").strip()
                 except (EOFError, KeyboardInterrupt):
@@ -539,6 +587,11 @@ class Game:
                 save_state(self.state)
                 lines = journal_mod.build_journal_lines(self.state, compact=self.compact)
                 self.win.render(lines[:self.win.height])
+                def _jour_resize() -> None:
+                    self._apply_resize()
+                    _jl = journal_mod.build_journal_lines(self.state, compact=self.compact)
+                    self.win.render(_jl[:self.win.height])
+                self.win.on_resize = _jour_resize
                 try:
                     self.win.prompt("journal> ", hint="Press 'ENTER' to return").strip()
                 except (EOFError, KeyboardInterrupt):
