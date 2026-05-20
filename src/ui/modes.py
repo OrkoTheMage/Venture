@@ -38,6 +38,7 @@ def enter_roster_mode(game: Renderer) -> bool:
     game.win.on_resize = _on_resize
 
     while True:
+        _show_roster(game, current_page)
         combat.apply_regen(game.state)
         try:
             raw = game.win.prompt(
@@ -58,16 +59,15 @@ def enter_roster_mode(game: Renderer) -> bool:
                 current_page = p
                 _show_roster(game, current_page)
             else:
-                print(f"Invalid page. Enter 1-{total}.")
+                game.win.pending_hint = f"Invalid page. Enter 1-{total}."
             continue
-        result = roster_logic.handle_roster_command(verb, parts, game.state)
+        result, hint = roster_logic.handle_roster_command(verb, parts, game.state)
+        if hint:
+            game.win.pending_hint = hint
         if result == "quit":
-            print("Goodbye!")
             return True
         if result == "back":
             return False
-        if result == "list":
-            _show_roster(game, current_page)
 
 
 # ── Spells ───────────────────────────────────────────────────────────────── #
@@ -99,6 +99,7 @@ def enter_spell_mode(game: Renderer) -> bool:
     game.win.on_resize = _on_resize
 
     while True:
+        _show_spells()
         combat.apply_regen(game.state)
         try:
             raw = game.win.prompt(
@@ -112,16 +113,18 @@ def enter_spell_mode(game: Renderer) -> bool:
             print("Goodbye!")
             return True
         if not raw.isdigit():
+            spells = quest_mod.get_available_spells(game.state)
+            game.win.pending_hint = f"Unknown Command: Type a number to cast, or press 'ENTER' to return"
             continue
 
         spells = quest_mod.get_available_spells(game.state)
         idx = int(raw) - 1
         if not (0 <= idx < len(spells)):
-            print(f"Invalid choice. Enter 1-{len(spells)}.")
+            game.win.pending_hint = f"Invalid choice. Enter 1-{len(spells)}."
             continue
         chosen_spell = spells[idx]
         if not chosen_spell["can_cast"]:
-            print(chosen_spell["reason"])
+            game.win.pending_hint = chosen_spell["reason"]
             continue
 
         # ── pick caster ───────────────────────────────────────────── #
@@ -144,14 +147,12 @@ def enter_spell_mode(game: Renderer) -> bool:
                 _show_spells()
                 continue
             if not c_raw.isdigit() or not (1 <= int(c_raw) <= len(casters)):
-                print("Invalid choice.")
-                _show_spells()
+                game.win.pending_hint = "Invalid choice."
                 continue
             caster = casters[int(c_raw) - 1]
 
         if not caster["can_cast"]:
-            print(f"{caster['wizard']} cannot cast this spell: {caster['reason']}")
-            _show_spells()
+            game.win.pending_hint = f"{caster['wizard']} cannot cast this spell: {caster['reason']}"
             continue
 
         # ── pick target (if needed) ───────────────────────────────── #
@@ -168,7 +169,7 @@ def enter_spell_mode(game: Renderer) -> bool:
             else:
                 targets = roster
             if not targets:
-                _show_spells("No valid targets available.")
+                game.win.pending_hint = "No valid targets available."
                 continue
             target_lines = ["", f"Choose a target for {chosen_spell['spell_label']}:"]
             for j, h in enumerate(targets, start=1):
@@ -195,8 +196,7 @@ def enter_spell_mode(game: Renderer) -> bool:
                 if 0 <= tidx < len(targets):
                     target_name = targets[tidx]["name"]
                 else:
-                    print("Invalid choice.")
-                    _show_spells()
+                    game.win.pending_hint = "Invalid choice."
                     continue
             else:
                 target_name = t_raw
@@ -205,7 +205,7 @@ def enter_spell_mode(game: Renderer) -> bool:
             game.state, caster["wizard"], chosen_spell["spell"], target_name
         )
         game.state = load_state()
-        _show_spells(msg)
+        game.win.pending_hint = msg
 
 
 # ── Recruit ──────────────────────────────────────────────────────────────── #
@@ -229,6 +229,7 @@ def enter_recruit_mode(game: Renderer) -> bool:
     game.win.on_resize = _on_resize
 
     while True:
+        _show_recruits()
         combat.apply_regen(game.state)
         try:
             raw = game.win.prompt(
@@ -245,9 +246,11 @@ def enter_recruit_mode(game: Renderer) -> bool:
             idx = int(raw) - 1
             ok, msg = quest_mod.hire_recruit(game.state, idx)
             game.state = load_state()
-            print(msg)
-            if ok:
-                _show_recruits()
+            game.win.pending_hint = msg
+            _show_recruits()
+        else:
+            offers = quest_mod.build_recruit_offers(game.state)
+            game.win.pending_hint = f"Unknown command: Type a number to hire, or press 'ENTER' to return"
 
 
 # ── Quest / Party selection ───────────────────────────────────────────────── #
@@ -309,7 +312,8 @@ def select_party(
             return None
         if raw == "venture":
             if len(selected) != MAX_PARTY:
-                print(f"You must select exactly {MAX_PARTY} heroes.")
+                game.win.pending_hint = f"You must select exactly {MAX_PARTY} heroes."
+                _draw()
                 continue
             return [current_roster[i] for i in selected]
         if raw in ("n", "next") and game.compact:
@@ -326,12 +330,14 @@ def select_party(
                 elif len(selected) < MAX_PARTY:
                     selected.append(idx)
                 else:
-                    print(f"Already have {MAX_PARTY} selected — deselect one first.")
+                    game.win.pending_hint = f"Already have {MAX_PARTY} selected — deselect one first."
                 # Jump to the page that contains the toggled hero
                 if game.compact:
                     hero_page = idx // _per_page()
             else:
-                print(f"Invalid choice. Enter 1-{len(current_roster)}.")
+                game.win.pending_hint = f"Invalid choice. Enter 1-{len(current_roster)}."
+        else:
+            game.win.pending_hint = f"Unknown command: Type a number to toggle, 'venture' to confirm, or press 'ENTER' to return."
         _draw()
 
 
@@ -387,13 +393,14 @@ def enter_quest_mode(game: Renderer) -> bool:
                     game.win.render(card_lines[:game.win.height])
                     continue
                 quest_mod.start_quest(game.state, chosen, party)
-                print(
+                game.win.pending_hint = (
                     f"Quest '{chosen['name']}' started — "
                     f"will complete in {quest_mod.format_duration(game.state['quest_duration'])} "
                     f"({chosen['length']})."
                 )
                 return False
-        print(f"Please choose 1-{len(quests)}, 'back', or 'quit'.")
+        game.win.pending_hint = f"Unknown Command: Type a number to choose a quest or press 'ENTER' to return"
+        game.win.render(card_lines[:game.win.height])
 
 
 # ── Graveyard ────────────────────────────────────────────────────────────── #

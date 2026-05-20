@@ -1,154 +1,12 @@
 from __future__ import annotations
 import random
 
-# ── Location event definitions (75% chance) ──────────────────────────────── #
-
-EVENTS: list[dict] = [
-    {
-        "name":     "Bountiful Harvest",
-        "location": "The Farmlands",
-        "effect":   "heal",
-        "lore": (
-            "Farmers bring a cartload of hard-won grain to the estate, asking only for willing steel against the dark things gnawing at their fields. "
-            "Those who answer find their wounds somehow lighter upon return."
-        ),
-        "effect_desc": "Heal 25% max HP on quest completion in The Farmlands",
-    },
-    {
-        "name":     "Rich Veins",
-        "location": "The Mountains",
-        "effect":   "gold",
-        "lore": (
-            "Word comes down from the stonecutters — the high passes are flush with forgotten coin, old hoards swallowed by collapse long before your grandfather drew breath. "
-            "The diggers dare not venture far alone, but those who do return with considerably heavier purses."
-        ),
-        "effect_desc": "Earn 100% more gold on quest completion in The Mountains",
-    },
-    {
-        "name":     "Creeping Revelation",
-        "location": "The Moors",
-        "effect":   "exp",
-        "lore": (
-            "A strange mist has settled over the moors — the kind that sharpens the mind and makes plain what was murk. "
-            "Those who walk through it return older behind the eyes, carrying wisdom that came more swiftly than it ought."
-        ),
-        "effect_desc": "Earn 100% more EXP on quest completion in The Moors",
-    },
-    {
-        "name":     "The Arcane Tide",
-        "location": "The Lochs",
-        "effect":   "spell_recharge",
-        "lore": (
-            "The water at the lochs shifts against the current — silver-cold and humming with something older than the estate, older than the name you carry. "
-            "Wizards touched by it feel their exhausted spells stir and rekindle, as though the night has decided to grant them another chance."
-        ),
-        "effect_desc": "All spells recharge for one random Wizard after a quest in The Lochs",
-    },
-]
-
-# ── Town event definitions (25% chance) ──────────────────────────────────── #
-
-TOWN_EVENTS: list[dict] = [
-    {
-        "name":       "A Moment of Respite",
-        "location":   None,
-        "effect":     "respite",
-        "town_event": True,
-        "lore": (
-            "A rare stillness has settled over the estate — the fragile quiet of good fortune and open hands. "
-            "Wounds will be mended, and the coins in the coffers will stack up nicely. Rest easy, this week brings good tidings."
-        ),
-        "effect_desc": "After any quest: +10% HP, +50% gold and EXP",
-    },
-    {
-        "name":       "Read The Bones",
-        "location":   None,
-        "effect":     "bones",
-        "town_event": True,
-        "lore": (
-            "A bone-reader arrived at the gates before dawn, asking neither coin nor courtesy. "
-            "She named two from the next party — one who would pass through untouched, and one who would bear the full weight of what waits within."
-        ),
-        "effect_desc": "One random hero takes max damage, one takes none",
-    },
-    {
-        "name":       "The Shaded Carriage",
-        "location":   None,
-        "effect":     "carriage",
-        "town_event": True,
-        "lore": (
-            "A covered carriage rolled in before midnight, its driver hooded and unhurried. "
-            "Those within are available this week at prices that will not hold. Bolster the ranks — few are so willing to throw their lives into this chaos."
-        ),
-        "effect_desc": "Recruit slot 2 is free, slot 3 is 50% off",
-    },
-
-    {
-        "name":       "Thieves in the Night",
-        "location":   None,
-        "effect":     "thieves",
-        "town_event": True,
-        "lore": (
-            "Before the first candle was lit, a ring of cutpurses worked their way through the estate "
-            "— drawers forced, locks picked, and storeroom supplies left bare. "
-            "They are still close. The trail is still warm. "
-            "Leave them to it, and they'll make with your hard-earned fortunes."
-        ),
-        "effect_desc": "A boss quest appears in slot 1 — clear it for +50% gold, ignore it and lose 50%",
-    },
-]
-
-RARE_EVENTS: list[dict] = [
-    {
-        "name":       "An Old Ally",
-        "location":   None,
-        "effect":     "banner_man",
-        "rare_event": True,
-        "lore": (
-            "An old soldier arrived at the estate gate before sunrise, bearing a standard you almost didn't recognise — your family's colours, faded and battle-worn. "
-            "They ask for no coin, only purpose, and they are clearly capable of far more than most your gold could buy."
-        ),
-        "effect_desc": "A 4th recruit appears this week — level 5 and free",
-    },
-    {
-        "name":       "Returned From The Styx",
-        "location":   None,
-        "effect":     "styx",
-        "rare_event": True,
-        "lore": (
-            "Word arrived in the grey hours — a name spoken on the other side of the dark, too stubborn to stay. "
-            "One among the fallen has found their way back to the threshold, and the door stands open if you choose to call them through."
-        ),
-        "effect_desc": "Revive one hero from the graveyard",
-    },
-    {
-        "name":       "Dark Ritual",
-        "location":   None,
-        "effect":     "ritual",
-        "rare_event": True,
-        "lore": (
-            "A hooded figure came to the estate in silence, offering knowledge wrapped in shadow and cost. "
-            "One of your heroes may be taken aside before dawn and returned changed — harder, carrying a level of capability that was not theirs before."
-        ),
-        "effect_desc": "Choose one hero to gain 1 level",
-    },
-    {
-        "name":       "For Whom The Bell Tolls",
-        "location":   None,
-        "effect":     "bell_tolls",
-        "rare_event": True,
-        "lore": (
-            "The bell in the estate tower rang out once at the black hour — no hand pulled the rope, no wind stirred the air. "
-            "In the old reckoning, such a toll was not for any one soul. It rang for all. "
-            "The weight of suffering, parcelled quietly across every living body on the grounds. "
-            "By morning the wounds had closed. What it cost, and who paid it, the bell does not say."
-        ),
-        "effect_desc": "Every hero in the roster is healed to full",
-    },
-]
-
-# Combined pool — indices 0-3 location, 4-6 town, 7-8 rare
-ALL_EVENTS: list[dict] = EVENTS + TOWN_EVENTS + RARE_EVENTS
+from .eventsDefinitions import (  # noqa: F401 — re-exported for callers
+    EVENTS,
+    TOWN_EVENTS,
+    RARE_EVENTS,
+    ALL_EVENTS,
+)
 
 # ── Active event ─────────────────────────────────────────────────────────── #
 
@@ -167,32 +25,20 @@ def pick_next_event(state: dict) -> None:
 
     roll = random.random()
     loc_end   = len(EVENTS)                        # 0-3
-    town_end  = len(EVENTS) + len(TOWN_EVENTS)     # 4-6
-    # rare_end = len(ALL_EVENTS)                   # 7-8
+    town_end  = len(EVENTS) + len(TOWN_EVENTS)     # 4-7
+    rare_end  = len(ALL_EVENTS)                    # 8-11
 
     if roll < 0.75:
         pool = [i for i in range(loc_end) if i != current_idx]
     elif roll < 0.99:
         pool = [i for i in range(loc_end, town_end) if i != current_idx]
     else:
-        pool = [i for i in range(town_end, len(ALL_EVENTS)) if i != current_idx]
+        pool = [i for i in range(town_end, rare_end) if i != current_idx]
 
     if not pool:
         pool = [i for i in range(len(ALL_EVENTS)) if i != current_idx]
 
     state["active_event_idx"] = random.choice(pool)
-
-    # Clear any unused pending event from the previous week
-    state.pop("pending_rare_event", None)
-
-    # If the new event requires home-screen interaction, mark it as pending now
-    new_event = ALL_EVENTS[state["active_event_idx"]]
-    if new_event["effect"] == "styx" and state.get("graveyard"):
-        state["pending_rare_event"] = "styx"
-    elif new_event["effect"] == "ritual" and any(
-        int(h.get("lvl", 1)) < 5 for h in state.get("roster", [])
-    ):
-        state["pending_rare_event"] = "ritual"
 
 
 # ── Apply bonus ───────────────────────────────────────────────────────────── #
@@ -312,10 +158,26 @@ def apply_event_bonus(state: dict, quest_location: str, party_names: list[str] |
     # ── The Shaded Carriage: discount applied at recruit generation time ───── #
     # (no quest reward line needed)
 
-    # -- For Whom The Bell Tolls: heal all roster heroes to max HP -- #
+    # ── Returned From The Styx: flag for post-quest revival prompt ───────── #
+    elif effect == "styx":
+        if state.get("graveyard"):
+            state["pending_rare_event"] = "styx"
+            rewards.append(f"\033[32m[{event['name']}]\033[0m A soul stirs at the threshold — choose a fallen hero to call back")
+        else:
+            rewards.append(f"\033[32m[{event['name']}]\033[0m The door to the Styx stands open, but there are no fallen to call through it")
+
+    # ── Dark Ritual: flag for post-quest level-up prompt ─────────────────── #
+    elif effect == "ritual":
+        if any(int(h.get("lvl", 1)) < 5 for h in state.get("roster", [])):
+            state["pending_rare_event"] = "ritual"
+            rewards.append(f"\033[32m[{event['name']}]\033[0m The hooded figure waits — choose a hero to receive the ritual")
+        else:
+            rewards.append(f"\033[32m[{event['name']}]\033[0m The hooded figure came and went — all heroes have already reached their peak")
+
+    # ── For Whom The Bell Tolls: heal all roster heroes to max HP ─────────── #
     elif effect == "bell_tolls":
         for h in state.get("roster", []):
             h["hp"] = float(h.get("max_hp", 100))
-        rewards.append(f"[32m[{event['name']}][0m Every wound on the grounds has sealed — party fully healed")
+        rewards.append(f"\033[32m[{event['name']}]\033[0m Every wound on the grounds has sealed \u2014 your heroes are fully healed")
 
     return rewards
