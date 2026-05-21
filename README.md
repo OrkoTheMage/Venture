@@ -34,7 +34,7 @@ A terminal-based RPG management game. Recruit heroes, send them on quests, manag
 - Heroes gain EXP and level up to 5, unlocking stronger bonuses and spells
 - Fighter: reduces quest duration · Rogue: earns bonus gold · Cleric: heals party after quests
 
-![Roster Section](docs/screenshots/Rosterview.png)
+![Roster Section](docs/screenshots/RosterView.png)
 
 ### Journal & Graveyard
 - Journal tracks estate goals: hero milestones, relics acquired, bosses defeated
