@@ -27,6 +27,8 @@ class Screen:
         #                             current screen.
         self.resize_check: Callable[[], bool] | None = None
         self.on_resize:    Callable[[], None] | None = None
+        # Set to show a one-shot message above the next prompt.
+        self.pending_hint: str = ""
 
     # ── Render ────────────────────────────────────────────────────────────── #
 
@@ -60,22 +62,58 @@ class Screen:
 
     # ── Prompt / input ────────────────────────────────────────────────────── #
 
-    def prompt(self, prompt: str, hint: str = "") -> str:
-        if hint:
+    def flush_input(self) -> None:
+        # Discard any keystrokes buffered while the animation was playing.
+        try:
+            import termios
+            termios.tcflush(sys.stdin, termios.TCIFLUSH)
+        except Exception:
+            try:
+                import select
+                while select.select([sys.stdin], [], [], 0)[0]:
+                    sys.stdin.read(1)
+            except Exception:
+                pass
+
+    def suppress_input(self) -> object:
+        try:
+            import termios
+            fd  = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            new = termios.tcgetattr(fd)
+            new[3] &= ~termios.ECHO   # clear ECHO only — leave CR/LF, canonical mode, etc. intact
+            termios.tcsetattr(fd, termios.TCSADRAIN, new)
+            return old
+        except Exception:
+            return None
+
+    def restore_input(self, saved: object) -> None:
+        try:
+            import termios
+            if saved is not None:
+                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, saved)
+        except Exception:
+            pass
+        self.flush_input()
+
+    def prompt(self, prompt: str, hint: str = "", require_input: bool = False) -> str:
+        actual_hint = self.pending_hint or hint
+        self.pending_hint = ""
+        if actual_hint:
             print()
-            print(hint)
+            print(actual_hint)
             print()
         else:
             for _ in range(3):
                 print()
-        return self._read_line(prompt, hint)
+        return self._read_line(prompt, actual_hint, require_input)
 
     # ── Responsive readline ───────────────────────────────────────────────── #
 
     # Reads a line character-by-character with live resize support.
     # Polls every 50 ms via select; fires resize_check / on_resize mid-input.
     # Falls back to plain input() on Windows or when stdin is not a TTY.
-    def _read_line(self, prompt: str, hint: str = "") -> str:
+    def _read_line(self, prompt: str, hint: str = "", require_input: bool = False) -> str:
         try:
             import select
             import tty
@@ -120,7 +158,11 @@ class Screen:
                 ch = sys.stdin.read(1)
 
                 if ch in ("\n", "\r"):          # Enter
-                    print()
+                    if require_input and not buf:
+                        print("\r\033[2K", end="", flush=True)
+                        print(prompt, end="", flush=True)
+                        continue
+                    print("\r\033[2K", end="", flush=True)
                     return "".join(buf)
 
                 if ch in ("\x7f", "\x08"):      # DEL / backspace

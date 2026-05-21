@@ -225,21 +225,22 @@ class Renderer:
     def _handle_styx_revival(self) -> None:
         graveyard = self.state.get("graveyard", [])
         if not graveyard:
-            print("[Returned From The Styx] No fallen heroes to revive.")
+            print("\033[32m[Returned From The Styx]\033[0m No fallen heroes to revive.")
             return
-        print("\n[Returned From The Styx] Choose a hero to revive:")
+        print("\n\033[32m[Returned From The Styx]\033[0m Choose a hero to revive:")
         for i, e in enumerate(graveyard, 1):
             print(f"  {i}. {e['name']} the {e['class']} (Lvl {e['lvl']}) — fell during '{e['quest']}'")
-        try:
-            choice = self.win.prompt("Choose a number (or ENTER to skip): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return
-        if not choice.isdigit() or not (1 <= int(choice) <= len(graveyard)):
-            print("Skipped.")
-            return
+        while True:
+            try:
+                choice = self.win.prompt("Choose a number: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return
+            if choice.isdigit() and 1 <= int(choice) <= len(graveyard):
+                break
+            print(f"Please enter a number between 1 and {len(graveyard)}.")
         idx   = int(choice) - 1
         entry = graveyard[idx]
-        from .combat import max_hp_for
+        from ..logic.combat import max_hp_for
         _EXP_FOR_LEVEL = {1: 0, 2: 100, 3: 200, 4: 400, 5: 800}
         lvl    = int(entry.get("lvl", 1))
         max_hp = float(max_hp_for(entry["class"], lvl))
@@ -261,18 +262,19 @@ class Renderer:
         roster   = self.state.get("roster", [])
         eligible = [h for h in roster if int(h.get("lvl", 1)) < 5]
         if not eligible:
-            print("[Dark Ritual] No heroes eligible for levelling (all at max level).")
+            print("\033[32m[Dark Ritual]\033[0m No heroes eligible for levelling (all at max level).")
             return
-        print("\n[Dark Ritual] Choose a hero to gain 1 level:")
+        print("\n\033[32m[Dark Ritual]\033[0m Choose a hero to gain 1 level:")
         for i, h in enumerate(eligible, 1):
             print(f"  {i}. {h['name']} the {h['class']} (Lvl {h['lvl']})")
-        try:
-            choice = self.win.prompt("Choose a number (or ENTER to skip): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return
-        if not choice.isdigit() or not (1 <= int(choice) <= len(eligible)):
-            print("Skipped.")
-            return
+        while True:
+            try:
+                choice = self.win.prompt("Choose a number: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return
+            if choice.isdigit() and 1 <= int(choice) <= len(eligible):
+                break
+            print(f"Please enter a number between 1 and {len(eligible)}.")
         target          = eligible[int(choice) - 1]
         _EXP_THRESHOLDS = [100, 200, 400, 800]
         cur_lvl         = int(target.get("lvl", 1))
@@ -297,61 +299,66 @@ class Renderer:
         prefix     = " " * left_pad
         full_title = " " + prefix + title
 
-        if first_launch:
-            intro = [
-                "Welcome, to the world of Venture",
-                "You are the heir to a great legacy.",
-                "Your once great house has fallen to the horrors from the depths.",
-                "Gather great heroes, and cunning allies. Delve the halls of your ancestors and...",
-            ]
-            print("\033[H\033[J", end="", flush=True)
-            print()
-            for line in intro:
-                print(" ", end="", flush=True)
-                for ch in line:
-                    print(ch, end="")
-                    sys.stdout.flush()
-                    time.sleep(0.015)
-                print()
-                time.sleep(0.25)
-            lines_above = 1 + len(intro) + 1
-        else:
-            if lines and max_width:
+        _saved = self.win.suppress_input()
+        try:
+            if first_launch:
+                intro = [
+                    "Welcome, to the world of Venture",
+                    "You are the heir to a great legacy.",
+                    "Your once great house has fallen to the horrors from the depths.",
+                    "Gather great heroes, and cunning allies. Delve the halls of your ancestors and...",
+                ]
                 print("\033[H\033[J", end="", flush=True)
                 print()
-                for _ in lines:
+                for line in intro:
+                    print(" ", end="", flush=True)
+                    for ch in line:
+                        print(ch, end="")
+                        sys.stdout.flush()
+                        time.sleep(0.015)
                     print()
-                col = 0
-                while True:
-                    col = min(col + 2, max_width)
-                    print(f"\033[{len(lines)}A", end="")
-                    for ln in lines:
-                        print(f"\r {ln[:col]}")
-                    sys.stdout.flush()
-                    time.sleep(0.01)
-                    if col >= max_width:
-                        break
-            lines_above = 1
+                    time.sleep(0.25)
+                lines_above = 1 + len(intro) + 1
+            else:
+                if lines and max_width:
+                    print("\033[H\033[J", end="", flush=True)
+                    print()
+                    for _ in lines:
+                        print()
+                    col = 0
+                    while True:
+                        col = min(col + 2, max_width)
+                        print(f"\033[{len(lines)}A", end="")
+                        for ln in lines:
+                            print(f"\r {ln[:col]}")
+                        sys.stdout.flush()
+                        time.sleep(0.01)
+                        if col >= max_width:
+                            break
+                lines_above = 1
 
-        # ── Title reveal ─────────────────────────────────────────────────── #
-        print()
-        print(f"\r {prefix}", end="")
-        for ch in title:
-            print(f"\033[1m{ch}\033[0m", end="")
-            sys.stdout.flush()
-            time.sleep(0.05)
-        time.sleep(0.8)
-
-        # ── Fade out ──────────────────────────────────────────────────────── #
-        print(f"\033[{lines_above}A\r", end="")
-        if first_launch:
+            # ── Title reveal ─────────────────────────────────────────────────────────────────── #
             print()
-            for line in intro:
-                print(f"\033[2m {line}\033[0m")
-        print()
-        print(f"\r\033[2m{full_title}\033[0m", end="")
-        sys.stdout.flush()
-        time.sleep(0.3)
+            print(f"\r {prefix}", end="")
+            for ch in title:
+                print(f"\033[1m{ch}\033[0m", end="")
+                sys.stdout.flush()
+                time.sleep(0.05)
+            time.sleep(0.8)
+
+            # ── Fade out ─────────────────────────────────────────────────────────────────────── #
+            print(f"\033[{lines_above}A\r", end="")
+            if first_launch:
+                print()
+                for line in intro:
+                    print(f"\033[2m {line}\033[0m")
+            print()
+            print(f"\r\033[2m{full_title}\033[0m", end="")
+            sys.stdout.flush()
+            time.sleep(0.3)
+        finally:
+            self.win.restore_input(_saved)
+
 
     # ── Home screen ───────────────────────────────────────────────────────── #
 

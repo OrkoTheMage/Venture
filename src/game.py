@@ -15,6 +15,9 @@ def play() -> None:
     r = Renderer()
     r.animate_logo(first_launch=not bool(r.player_name))
     r.render_home()
+    if r.state.get("pending_rare_event"):
+        r.handle_pending_rare_event()
+        r.render_home()
 
     if not r.player_name:
         try:
@@ -60,18 +63,20 @@ def play() -> None:
                     print("Goodbye!")
                     return
                 if verb_check != "roster":
-                    print("Please type 'roster' to view your roster before proceeding.")
+                    r.win.pending_hint = "Please type 'roster' to view your roster before proceeding."
+                    r.render_home()
                     continue
                 if modes.enter_roster_mode(r):
                     return
                 r.render_home()
-                print('\nType "quest" to view available quests.')
+                r.win.pending_hint = 'Type "quest" to view available quests.'
             continue
 
         if not cmd:
+            r.render_home()
             if r.state.get("pending_rare_event"):
                 r.handle_pending_rare_event()
-            r.render_home()
+                r.render_home()
             continue
 
         try:
@@ -83,16 +88,18 @@ def play() -> None:
         if verb == "quest":
             if quest_mod.quest_info().get("running"):
                 qi = quest_mod.quest_info()
-                print(f"Already on a quest — {quest_mod.format_duration(qi['remaining'])} remaining.")
+                r.win.pending_hint = f"Already on a quest — {quest_mod.format_duration(qi['remaining'])} remaining."
+                r.render_home()
                 continue
             if r.state.get("gather_allies_done"):
                 count = len(r.state.get("roster", []))
                 if count < 4:
                     word = "hero" if count == 1 else "heroes"
-                    print(
+                    r.win.pending_hint = (
                         f"Your roster only has {count} {word} — you need at least 4 to "
                         f"embark on a quest. Type 'recruit' to hire more heroes first."
                     )
+                    r.render_home()
                     continue
             if modes.enter_quest_mode(r):
                 return
@@ -104,13 +111,14 @@ def play() -> None:
                 return
             r.render_home()
             if was_first:
-                print('\nType "quest" to view available quests.')
+                r.win.pending_hint = 'Type "quest" to view available quests.'
 
         elif verb == "spells":
             r.state["spells_hint_seen"] = True
             save_state(r.state)
             if quest_mod.quest_info().get("running"):
-                print("Cannot cast spells while a quest is in progress.")
+                r.win.pending_hint = "Cannot cast spells while a quest is in progress."
+                r.render_home()
                 continue
             if modes.enter_spell_mode(r):
                 return
@@ -118,13 +126,16 @@ def play() -> None:
 
         elif verb == "recruit":
             if not r.state.get("gather_allies_done"):
-                print("Your best chance to gather allies right now is on a quest — look for 'Gather Allies' in the quest list.")
+                r.win.pending_hint = "Your best chance to gather allies right now is on a quest — look for 'Gather Allies' in the quest list."
+                r.render_home()
                 continue
             if quest_mod.quest_info().get("running"):
-                print("Cannot recruit while a quest is in progress.")
+                r.win.pending_hint = "Cannot recruit while a quest is in progress."
+                r.render_home()
                 continue
             if len(r.state.get("roster", [])) >= roster_mod.ROSTER_CAP:
-                print(f"Roster is full ({roster_mod.ROSTER_CAP}/{roster_mod.ROSTER_CAP}). Dismiss a hero in the roster menu first.")
+                r.win.pending_hint = f"Roster is full ({roster_mod.ROSTER_CAP}/{roster_mod.ROSTER_CAP}). Dismiss a hero in the roster menu first."
+                r.render_home()
                 continue
             r.state["recruit_hint_seen"] = True
             save_state(r.state)
@@ -148,7 +159,8 @@ def play() -> None:
 
         elif verb == "dev":
             if dev_mod is None:
-                print("Unknown command. Type 'help'.")
+                r.win.pending_hint = "Unknown command: Type 'help'."
+                r.render_home()
             else:
                 r.state = dev_mod.handle_dev_command(parts, r.state, r.cols, r.rows, r.compact)
 
@@ -157,7 +169,9 @@ def play() -> None:
             return
 
         elif verb == "help":
-            print("Commands: quest, roster, recruit, spells, graveyard, journal, help, quit")
+            r.win.pending_hint = "Commands: quest, roster, recruit, spells, graveyard, journal, help, quit"
+            r.render_home()
 
         else:
-            print("Unknown command. Type 'help'.")
+            r.win.pending_hint = "Unknown command: Type 'help'."
+            r.render_home()
