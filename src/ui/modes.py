@@ -163,7 +163,7 @@ def enter_spell_mode(game: Renderer) -> bool:
             if chosen_spell["spell"] == "mage_armor":
                 targets = [h for h in roster if mage_armor_map.get(h["name"], 0) <= 0]
             elif chosen_spell["spell"] == "inspire":
-                from .combat import exp_to_level as _etl  # noqa: F401
+                from ..logic.combat import exp_to_level as _etl  # noqa: F401
                 MAX_LVL = 5
                 targets = [h for h in roster if int(h.get("lvl", 1)) < MAX_LVL]
             else:
